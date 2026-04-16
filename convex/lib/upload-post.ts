@@ -1,4 +1,4 @@
-const BASE_URL = "https://app.upload-post.com";
+const BASE_URL = "https://api.upload-post.com";
 
 function getApiKey(): string {
   const key = process.env.UPLOAD_POST_API_KEY;
