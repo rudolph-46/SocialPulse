@@ -3,6 +3,7 @@
 import {
   BadgeCheck,
   ChevronsUpDown,
+  Coins,
   CreditCard,
   LogOut,
   Settings,
@@ -98,6 +99,12 @@ export function NavUser() {
               >
                 <BadgeCheck />
                 Mon compte
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => navigate({ to: "/dashboard/credits" })}
+              >
+                <Coins />
+                Crédits
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => navigate({ to: "/dashboard/settings/billing" })}

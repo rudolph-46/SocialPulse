@@ -12,7 +12,7 @@ import {
   sendSubscriptionSuccessEmail,
 } from "@cvx/email/templates/subscriptionEmail";
 import Stripe from "stripe";
-import { Doc } from "@cvx/_generated/dataModel";
+import { Doc, Id } from "@cvx/_generated/dataModel";
 
 const http = httpRouter();
 
@@ -65,11 +65,32 @@ const handleUpdateSubscription = async (
   });
 };
 
+const handleCreditPackPurchase = async (
+  ctx: ActionCtx,
+  session: Stripe.Checkout.Session,
+) => {
+  const metadata = session.metadata;
+  if (!metadata?.userId || !metadata?.packId || !metadata?.credits) {
+    throw new Error("Missing credit pack metadata");
+  }
+  await ctx.runMutation(internal.credits.PREAUTH_creditUser, {
+    userId: metadata.userId as Id<"users">,
+    credits: parseInt(metadata.credits, 10),
+    packId: metadata.packId,
+    paymentReference: session.id,
+  });
+  return new Response(null);
+};
+
 const handleCheckoutSessionCompleted = async (
   ctx: ActionCtx,
   event: Stripe.CheckoutSessionCompletedEvent,
 ) => {
   const session = event.data.object;
+
+  if (session.mode === "payment" && session.metadata?.type === "credit_pack") {
+    return handleCreditPackPurchase(ctx, session);
+  }
 
   const { customer: customerId, subscription: subscriptionId } = z
     .object({ customer: z.string(), subscription: z.string() })

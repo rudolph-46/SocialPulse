@@ -115,6 +115,10 @@ const data = {
           title: "Facturation",
           url: "/dashboard/settings/billing",
         },
+        {
+          title: "Crédits",
+          url: "/dashboard/credits",
+        },
       ],
     },
   ],
@@ -126,7 +130,7 @@ const data = {
     },
     {
       name: "Crédits",
-      url: "/dashboard/settings/billing",
+      url: "/dashboard/credits",
       icon: CreditCard,
     },
     {

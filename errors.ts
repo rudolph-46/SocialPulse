@@ -14,6 +14,10 @@ export const ERRORS = {
   STRIPE_CUSTOMER_NOT_CREATED: "Unable to create customer.",
   STRIPE_SOMETHING_WENT_WRONG:
     "Something went wrong while trying to handle Stripe API.",
+  // Credits.
+  CREDITS_INSUFFICIENT: "Insufficient credits for this operation.",
+  CREDITS_PACK_NOT_FOUND: "Credit pack not found.",
+  CREDITS_PURCHASE_FAILED: "Credit purchase failed.",
   // Misc.
   UNKNOWN: "Unknown error.",
   ENVS_NOT_INITIALIZED: "Environment variables not initialized.",
