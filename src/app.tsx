@@ -6,7 +6,6 @@ import { HelmetProvider } from "react-helmet-async";
 import { router } from "@/router";
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import "@/i18n";
-import { useCallback } from "react";
 
 // Convex client
 const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
@@ -30,13 +29,9 @@ function InnerApp() {
 const helmetContext = {};
 
 export default function App() {
-  const replaceURL = useCallback((url: string) => {
-    router.navigate({ to: url, replace: true });
-  }, []);
-
   return (
     <HelmetProvider context={helmetContext}>
-      <ConvexAuthProvider client={convex} replaceURL={replaceURL}>
+      <ConvexAuthProvider client={convex}>
         <QueryClientProvider client={queryClient}>
           <InnerApp />
         </QueryClientProvider>
