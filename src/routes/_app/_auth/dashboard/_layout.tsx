@@ -1,12 +1,15 @@
 import {
   createFileRoute,
   Outlet,
+  useNavigate,
   useRouter,
 } from "@tanstack/react-router";
+import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { convexQuery } from "@convex-dev/react-query";
 import { api } from "@cvx/_generated/api";
 import { AppSidebar } from "@/ui/app-sidebar";
+import { Route as OnboardingRoute } from "@/routes/_app/_auth/onboarding/_layout.index";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -29,12 +32,22 @@ export const Route = createFileRoute("/_app/_auth/dashboard/_layout")({
 function DashboardLayout() {
   const { data: user } = useQuery(convexQuery(api.app.getCurrentUser, {}));
   const router = useRouter();
+  const navigate = useNavigate();
   const matchWithTitle = [...router.state.matches]
     .reverse()
     .find((d) => d.routeContext?.headerTitle);
   const pageTitle = matchWithTitle?.routeContext?.headerTitle || "Dashboard";
 
+  useEffect(() => {
+    if (user && !user.onboardingCompletedAt) {
+      navigate({ to: OnboardingRoute.fullPath });
+    }
+  }, [navigate, user]);
+
   if (!user) {
+    return null;
+  }
+  if (!user.onboardingCompletedAt) {
     return null;
   }
   return (

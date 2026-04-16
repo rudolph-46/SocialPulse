@@ -11,7 +11,6 @@ import {
   CONTENT_LANGUAGES,
   NETWORKS,
   ONBOARDING_STEPS,
-  PAYMENT_METHODS,
   TARGET_AUDIENCES,
   type BrandTone,
   type ContentLanguage,
@@ -26,31 +25,33 @@ import { Loader2, Sparkles } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Route as DashboardRoute } from "@/routes/_app/_auth/dashboard/_layout.index";
 
-type QuestionnaireState = {
-  businessCategory: string;
-  targetAudience: TargetAudience | "";
-  brandTone: BrandTone | "";
-  differentiator: string;
-  contentLanguage: ContentLanguage | "";
+export const Route = createFileRoute("/_app/_auth/onboarding/_layout/")({
+  component: OnboardingShell,
+  beforeLoad: () => ({
+    title: "Onboarding",
+  }),
+});
+
+const cadenceOptions = [
+  { value: 3, title: "3/semaine", subtitle: "Presence legere" },
+  { value: 5, title: "5/semaine", subtitle: "Le plus populaire" },
+  { value: 7, title: "7/semaine", subtitle: "Tous les jours" },
+  { value: 14, title: "14/semaine", subtitle: "Intensif" },
+] as const;
+
+const durationOptions = [2, 4, 8] as const;
+
+const networkLabels: Record<Network, string> = {
+  [NETWORKS.FACEBOOK]: "Facebook",
+  [NETWORKS.INSTAGRAM]: "Instagram",
+  [NETWORKS.LINKEDIN]: "LinkedIn",
 };
 
-const toneCopy: Record<BrandTone, { title: string; example: string }> = {
-  [BRAND_TONES.PROFESSIONAL]: {
-    title: "Professionnel",
-    example: "Nous sommes ravis de vous accueillir",
-  },
-  [BRAND_TONES.WARM]: {
-    title: "Chaleureux",
-    example: "Passez nous voir, on vous attend !",
-  },
-  [BRAND_TONES.FUN]: {
-    title: "Fun",
-    example: "Prets pour une transformation ?",
-  },
-  [BRAND_TONES.INSPIRING]: {
-    title: "Inspirant",
-    example: "Croyez en votre potentiel",
-  },
+const toneCopy: Record<BrandTone, string> = {
+  [BRAND_TONES.PROFESSIONAL]: "Professionnel",
+  [BRAND_TONES.WARM]: "Chaleureux",
+  [BRAND_TONES.FUN]: "Fun",
+  [BRAND_TONES.INSPIRING]: "Inspirant",
 };
 
 const audienceCopy: Record<TargetAudience, string> = {
@@ -65,113 +66,15 @@ const languageCopy: Record<ContentLanguage, string> = {
   [CONTENT_LANGUAGES.BOTH]: "Les deux",
 };
 
-const networkLabels: Record<Network, string> = {
-  [NETWORKS.FACEBOOK]: "Facebook",
-  [NETWORKS.INSTAGRAM]: "Instagram",
-  [NETWORKS.LINKEDIN]: "LinkedIn",
-};
-
-const cadenceOptions = [
-  {
-    value: 3,
-    title: "3/semaine",
-    subtitle: "Presence legere",
-    description: "Ideal pour demarrer",
-  },
-  {
-    value: 5,
-    title: "5/semaine",
-    subtitle: "Presence active",
-    description: "Le plus populaire",
-  },
-  {
-    value: 7,
-    title: "7/semaine",
-    subtitle: "Tous les jours",
-    description: "Pour accelerer",
-  },
-  {
-    value: 14,
-    title: "14/semaine",
-    subtitle: "Intensif",
-    description: "2 posts par jour",
-  },
-] as const;
-
-const durationOptions = [2, 4, 8] as const;
-
-export const Route = createFileRoute("/_app/_auth/onboarding/_layout/")({
-  component: OnboardingShell,
-  beforeLoad: () => ({
-    title: "Onboarding",
-  }),
-});
-
-function deriveEditorialProfile(input: {
-  businessCategory?: string;
-  brandTone?: BrandTone;
-  differentiator?: string;
-  targetAudience?: TargetAudience;
-  contentLanguage?: ContentLanguage;
-}) {
-  const category = input.businessCategory?.trim() || "Activite locale";
-  const differentiator =
-    input.differentiator?.trim() || "expertise terrain et resultats visibles";
-  const tone = input.brandTone || BRAND_TONES.WARM;
-  const audience = input.targetAudience || TARGET_AUDIENCES.B2C;
-  const language = input.contentLanguage || CONTENT_LANGUAGES.FR;
-  const toneLabel =
-    tone === BRAND_TONES.PROFESSIONAL
-      ? "Professionnel et rassurant"
-      : tone === BRAND_TONES.WARM
-        ? "Chaleureux et accessible"
-        : tone === BRAND_TONES.FUN
-          ? "Fun et energique"
-          : "Inspirant et ambitieux";
-  const themes = [
-    `${category}`,
-    "Avant / apres",
-    audienceCopy[audience],
-    differentiator,
-  ];
-  const schedule =
-    language === CONTENT_LANGUAGES.EN
-      ? ["Tuesday at 10:00", "Thursday at 10:00", "Saturday at 11:00"]
-      : ["Mardi a 10h", "Jeudi a 10h", "Samedi a 11h"];
-  const samplePosts =
-    language === CONTENT_LANGUAGES.EN
-      ? [
-          `Meet the team behind your next ${category.toLowerCase()} success story.`,
-          `Three reasons clients choose us for ${category.toLowerCase()}.`,
-          `Behind the scenes: how we deliver ${differentiator}.`,
-        ]
-      : [
-          `Decouvrez comment notre approche ${differentiator} fait la difference.`,
-          `3 raisons de nous confier votre prochain besoin en ${category.toLowerCase()}.`,
-          `En coulisses: notre methode pour offrir une experience ${toneLabel.toLowerCase()}.`,
-        ];
-
-  return {
-    summary: `${toneLabel} pour ${category.toLowerCase()}`,
-    themes,
-    schedule,
-    samplePosts,
-  };
-}
-
-function getQuestionIndex(state: QuestionnaireState) {
-  if (!state.businessCategory.trim()) return 0;
-  if (!state.targetAudience) return 1;
-  if (!state.brandTone) return 2;
-  if (!state.differentiator.trim()) return 3;
-  if (!state.contentLanguage) return 4;
-  return 5;
-}
+type Step = "connect" | "business" | "cadence" | "generating";
 
 function OnboardingShell() {
   const { data: user } = useQuery(convexQuery(api.app.getCurrentUser, {}));
   const saveProgress = useConvexMutation(api.app.saveOnboardingProgress);
   const finishOnboarding = useConvexMutation(api.app.finishOnboarding);
+  const generateCalendar = useConvexAction(
+    api.calendar.generateCalendarForCurrentUser,
+  );
   const createFacebookConnection = useConvexAction(
     api.app.createFacebookConnection,
   );
@@ -179,114 +82,77 @@ function OnboardingShell() {
   const selectFacebookPage = useConvexMutation(api.app.selectFacebookPage);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [questionnaire, setQuestionnaire] = useState<QuestionnaireState>({
-    businessCategory: "",
-    targetAudience: "",
-    brandTone: "",
-    differentiator: "",
-    contentLanguage: "",
-  });
-  const [editorialDraft, setEditorialDraft] = useState({
-    summary: "",
-    themesText: "",
-    scheduleText: "",
-    samplePostsText: "",
-  });
+
+  const [step, setStep] = useState<Step>("connect");
+  const [businessCategory, setBusinessCategory] = useState("");
+  const [targetAudience, setTargetAudience] = useState<TargetAudience | "">("");
+  const [brandTone, setBrandTone] = useState<BrandTone | "">("");
+  const [contentLanguage, setContentLanguage] = useState<ContentLanguage | "">("");
   const [selectedPlatforms, setSelectedPlatforms] = useState<Network[]>([
     NETWORKS.FACEBOOK,
   ]);
   const [selectedCadence, setSelectedCadence] = useState(5);
   const [selectedDuration, setSelectedDuration] = useState(4);
-  const [photoFiles, setPhotoFiles] = useState<File[]>([]);
-  const [isEditingEditorial, setIsEditingEditorial] = useState(false);
-  const [generationProgress, setGenerationProgress] = useState(8);
-  const [facebookConnectionError, setFacebookConnectionError] = useState<
-    string | null
-  >(null);
+  const [facebookConnectionError, setFacebookConnectionError] = useState<string | null>(null);
   const [isSyncingAfterCallback, setIsSyncingAfterCallback] = useState(false);
+  const [generationProgress, setGenerationProgress] = useState(8);
+  const [generationError, setGenerationError] = useState<string | null>(null);
   const generationStartedRef = useRef(false);
 
   const { mutateAsync: saveOnboardingProgress, isPending: isSaving } =
-    useMutation({
-      mutationFn: saveProgress,
-    });
+    useMutation({ mutationFn: saveProgress });
   const { mutateAsync: finishOnboardingFlow } = useMutation({
     mutationFn: finishOnboarding,
   });
+  const { mutateAsync: runCalendarGeneration, isPending: isGeneratingCalendar } =
+    useMutation({ mutationFn: generateCalendar });
   const { mutateAsync: startFacebookConnection, isPending: isConnectingFacebook } =
-    useMutation({
-      mutationFn: createFacebookConnection,
-    });
+    useMutation({ mutationFn: createFacebookConnection });
   const { mutateAsync: refreshFacebookPages, isPending: isRefreshingFacebook } =
-    useMutation({
-      mutationFn: syncFacebookPages,
-    });
-  const { mutateAsync: chooseFacebookPage, isPending: isSelectingFacebookPage } =
-    useMutation({
-      mutationFn: selectFacebookPage,
-    });
+    useMutation({ mutationFn: syncFacebookPages });
+  const { mutateAsync: chooseFacebookPage } = useMutation({
+    mutationFn: selectFacebookPage,
+  });
 
+  // Restore state from user
   useEffect(() => {
-    if (!user) {
-      return;
-    }
+    if (!user) return;
     if (user.onboardingCompletedAt) {
       navigate({ to: DashboardRoute.fullPath });
       return;
     }
-    setQuestionnaire({
-      businessCategory: user.businessCategory ?? "",
-      targetAudience: user.targetAudience ?? "",
-      brandTone: user.brandTone ?? "",
-      differentiator: user.differentiator ?? "",
-      contentLanguage: user.contentLanguage ?? "",
-    });
-    const derived = deriveEditorialProfile({
-      businessCategory: user.businessCategory,
-      brandTone: user.brandTone,
-      differentiator: user.differentiator,
-      targetAudience: user.targetAudience,
-      contentLanguage: user.contentLanguage,
-    });
-    setEditorialDraft({
-      summary: user.editorialSummary ?? derived.summary,
-      themesText: (user.editorialThemes ?? derived.themes).join(", "),
-      scheduleText: (user.recommendedSchedule ?? derived.schedule).join("\n"),
-      samplePostsText: (user.samplePosts ?? derived.samplePosts).join("\n\n"),
-    });
+    setBusinessCategory(user.businessCategory ?? "");
+    setTargetAudience(user.targetAudience ?? "");
+    setBrandTone(user.brandTone ?? "");
+    setContentLanguage(user.contentLanguage ?? "");
     setSelectedCadence(user.selectedCadence ?? 5);
     setSelectedPlatforms(user.selectedPlatforms ?? [NETWORKS.FACEBOOK]);
     setSelectedDuration(user.selectedDurationWeeks ?? 4);
+
+    const hasConnected =
+      (user.connectedPlatforms ?? []).includes(NETWORKS.FACEBOOK) &&
+      (user.facebookPages?.length ?? 0) > 0 &&
+      !!user.selectedFacebookPageId;
+
+    if (user.onboardingStep === ONBOARDING_STEPS.GENERATING) {
+      setStep("generating");
+    } else if (user.onboardingStep === ONBOARDING_STEPS.CADENCE) {
+      setStep("cadence");
+    } else if (
+      user.onboardingStep === ONBOARDING_STEPS.BUSINESS_INFO ||
+      user.onboardingStep === ONBOARDING_STEPS.EDITORIAL_PROFILE
+    ) {
+      setStep("business");
+    } else if (hasConnected && user.businessCategory) {
+      setStep("cadence");
+    } else if (hasConnected) {
+      setStep("business");
+    } else {
+      setStep("connect");
+    }
   }, [navigate, user]);
 
-  useEffect(() => {
-    if (!user || user.onboardingStep !== ONBOARDING_STEPS.GENERATING) {
-      generationStartedRef.current = false;
-      setGenerationProgress(8);
-      return;
-    }
-    if (generationStartedRef.current) {
-      return;
-    }
-    generationStartedRef.current = true;
-    let progress = 8;
-    const interval = window.setInterval(() => {
-      progress = Math.min(progress + 6, 100);
-      setGenerationProgress(progress);
-    }, 900);
-    const timeout = window.setTimeout(async () => {
-      window.clearInterval(interval);
-      await finishOnboardingFlow({
-        currency: getLocaleCurrency(),
-      });
-      navigate({ to: DashboardRoute.fullPath });
-    }, 15000);
-    return () => {
-      window.clearInterval(interval);
-      window.clearTimeout(timeout);
-    };
-  }, [finishOnboardingFlow, navigate, user]);
-
+  // Facebook callback
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
@@ -307,7 +173,7 @@ function OnboardingShell() {
       })
       .catch(() => {
         setFacebookConnectionError(
-          "Impossible de récupérer vos pages. Réessayez.",
+          "Impossible de recuperer vos pages. Reessayez.",
         );
       })
       .finally(() => {
@@ -315,434 +181,240 @@ function OnboardingShell() {
       });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const currentStep =
-    user?.onboardingStep ?? ONBOARDING_STEPS.CONNECT_NETWORK;
-  const questionIndex = getQuestionIndex(questionnaire);
-  const totalPosts = selectedCadence * selectedPlatforms.length * selectedDuration;
-  const estimatedPrice = totalPosts * 625;
-
-  if (!user) {
-    return null;
-  }
-
-  const goToStep = async (step: (typeof ONBOARDING_STEPS)[keyof typeof ONBOARDING_STEPS]) => {
-    await saveOnboardingProgress({ step });
-  };
-
-  const togglePostingPlatform = (platform: Network) => {
-    setSelectedPlatforms((previous) => {
-      if (previous.includes(platform)) {
-        return previous.length === 1
-          ? previous
-          : previous.filter((value) => value !== platform);
-      }
-      return [...previous, platform];
-    });
-  };
-
-  const saveQuestionnaire = async () => {
-    if (questionIndex < 5) {
+  // Generation step
+  useEffect(() => {
+    if (step !== "generating") {
+      generationStartedRef.current = false;
+      setGenerationProgress(8);
+      setGenerationError(null);
       return;
     }
-    await saveOnboardingProgress({
-      step: ONBOARDING_STEPS.EDITORIAL_PROFILE,
-      businessCategory: questionnaire.businessCategory.trim(),
-      targetAudience: questionnaire.targetAudience || undefined,
-      brandTone: questionnaire.brandTone || undefined,
-      differentiator: questionnaire.differentiator.trim(),
-      contentLanguage: questionnaire.contentLanguage || undefined,
-    });
-  };
+    if (generationStartedRef.current) return;
+    generationStartedRef.current = true;
+    setGenerationError(null);
 
-  const saveEditorial = async () => {
-    await saveOnboardingProgress({
-      step: ONBOARDING_STEPS.CADENCE,
-      editorialSummary: editorialDraft.summary.trim(),
-      editorialThemes: editorialDraft.themesText
-        .split(",")
-        .map((item) => item.trim())
-        .filter(Boolean),
-      recommendedSchedule: editorialDraft.scheduleText
-        .split("\n")
-        .map((item) => item.trim())
-        .filter(Boolean),
-      samplePosts: editorialDraft.samplePostsText
-        .split("\n")
-        .map((item) => item.trim())
-        .filter(Boolean),
-    });
-    setIsEditingEditorial(false);
-  };
+    let progress = 8;
+    const interval = window.setInterval(() => {
+      progress = Math.min(progress + 5, 92);
+      setGenerationProgress(progress);
+    }, 800);
 
-  const saveCadence = async () => {
-    await saveOnboardingProgress({
-      step: ONBOARDING_STEPS.PHOTOS,
-      selectedCadence,
-      selectedPlatforms,
-      selectedDurationWeeks: selectedDuration,
-    });
-  };
-
-  const savePhotos = async () => {
-    await saveOnboardingProgress({
-      step: ONBOARDING_STEPS.PAYMENT,
-      uploadedPhotoCount: photoFiles.length,
-    });
-  };
-
-  const savePayment = async (paymentMethod: "mobile_money" | "card") => {
-    await saveOnboardingProgress({
-      step: ONBOARDING_STEPS.GENERATING,
-      paymentMethod,
-    });
-  };
-
-  const handleFacebookConnect = async () => {
-    setFacebookConnectionError(null);
-    try {
-      const result = await startFacebookConnection({});
-      if (!result?.accessUrl) {
-        return;
-      }
-      window.location.href = result.accessUrl;
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Connexion Facebook impossible.";
-      if (message.includes("UPLOAD_POST_API_KEY")) {
-        setFacebookConnectionError(
-          "Upload-Post n'est pas configure. Ajoute UPLOAD_POST_API_KEY dans les variables d'environnement Convex.",
+    Promise.all([
+      runCalendarGeneration({}),
+      new Promise((r) => setTimeout(r, 6000)),
+    ])
+      .then(async () => {
+        window.clearInterval(interval);
+        setGenerationProgress(100);
+        await finishOnboardingFlow({ currency: getLocaleCurrency() });
+        await Promise.all([
+          queryClient.invalidateQueries({
+            queryKey: convexQuery(api.app.getCurrentUser, {}).queryKey,
+          }),
+          queryClient.invalidateQueries({
+            queryKey: convexQuery(api.calendar.getCurrentCalendar, {}).queryKey,
+          }),
+          queryClient.invalidateQueries({
+            queryKey: convexQuery(api.calendar.getCurrentCalendarPosts, {})
+              .queryKey,
+          }),
+        ]);
+        navigate({ to: DashboardRoute.fullPath });
+      })
+      .catch((error) => {
+        window.clearInterval(interval);
+        generationStartedRef.current = false;
+        setGenerationProgress(8);
+        setGenerationError(
+          error instanceof Error
+            ? error.message
+            : "La generation du calendrier a echoue.",
         );
-        return;
-      }
-      if (message.includes("SITE_URL")) {
-        setFacebookConnectionError(
-          "SITE_URL n'est pas configure dans Convex. Definis l'URL publique de SocialPulse avant de connecter Facebook.",
-        );
-        return;
-      }
-      setFacebookConnectionError(message);
-    }
-  };
+      });
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, [
+    step,
+    finishOnboardingFlow,
+    navigate,
+    queryClient,
+    runCalendarGeneration,
+  ]);
+
+  if (!user) return null;
 
   const hasConnectedFacebook =
     (user.connectedPlatforms ?? []).includes(NETWORKS.FACEBOOK) &&
     (user.facebookPages?.length ?? 0) > 0;
 
+  const totalPosts =
+    selectedCadence * selectedPlatforms.length * selectedDuration;
+
+  const handleFacebookConnect = async () => {
+    setFacebookConnectionError(null);
+    try {
+      const result = await startFacebookConnection({});
+      if (result?.accessUrl) window.location.href = result.accessUrl;
+    } catch (error) {
+      const msg =
+        error instanceof Error ? error.message : "Connexion impossible.";
+      setFacebookConnectionError(msg);
+    }
+  };
+
+  const goToBusiness = () => setStep("business");
+
+  const saveBusiness = async () => {
+    await saveOnboardingProgress({
+      step: ONBOARDING_STEPS.CADENCE,
+      businessCategory: businessCategory.trim(),
+      targetAudience: targetAudience || undefined,
+      brandTone: brandTone || undefined,
+      contentLanguage: contentLanguage || undefined,
+    });
+    setStep("cadence");
+  };
+
+  const launchGeneration = async () => {
+    const summary = `${toneCopy[brandTone as BrandTone] ?? "Chaleureux"} pour ${businessCategory.toLowerCase() || "activite locale"}`;
+    const themes = [businessCategory, audienceCopy[targetAudience as TargetAudience] ?? ""].filter(Boolean);
+    const schedule =
+      contentLanguage === CONTENT_LANGUAGES.EN
+        ? ["Tuesday 10:00", "Thursday 10:00", "Saturday 11:00"]
+        : ["Mardi 10h", "Jeudi 10h", "Samedi 11h"];
+    const samplePosts = [
+      `Decouvrez notre approche unique en ${businessCategory.toLowerCase() || "local"}.`,
+      `3 raisons de nous faire confiance.`,
+      `En coulisses : notre methode au quotidien.`,
+    ];
+    await saveOnboardingProgress({
+      step: ONBOARDING_STEPS.GENERATING,
+      selectedCadence,
+      selectedPlatforms,
+      selectedDurationWeeks: selectedDuration,
+      editorialSummary: summary,
+      editorialThemes: themes,
+      recommendedSchedule: schedule,
+      samplePosts,
+    });
+    setStep("generating");
+  };
+
+  const stepIndex = step === "connect" ? 0 : step === "business" ? 1 : step === "cadence" ? 2 : 3;
+  const progressPct = step === "generating" ? generationProgress : [15, 40, 70, 90][stepIndex];
+
   return (
-    <div className="mx-auto flex h-full w-full max-w-4xl flex-col justify-center gap-6 px-6 py-16">
+    <div className="mx-auto flex h-full w-full max-w-3xl flex-col justify-center gap-6 px-6 py-16">
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm font-medium uppercase tracking-[0.2em] text-primary/50">
-            SocialPulse Onboarding
+            SocialPulse
           </p>
           <h1 className="mt-2 text-3xl font-semibold text-primary">
-            {currentStep === ONBOARDING_STEPS.CONNECT_NETWORK &&
-              "Connecte ton reseau"}
-            {currentStep === ONBOARDING_STEPS.BUSINESS_INFO &&
-              "Construisons ton profil editorial"}
-            {currentStep === ONBOARDING_STEPS.EDITORIAL_PROFILE &&
-              "Ton profil editorial"}
-            {currentStep === ONBOARDING_STEPS.CADENCE &&
-              "Choisis ton volume"}
-            {currentStep === ONBOARDING_STEPS.PHOTOS &&
-              "Ajoute tes photos"}
-            {currentStep === ONBOARDING_STEPS.PAYMENT && "Finalise ton pack"}
-            {currentStep === ONBOARDING_STEPS.GENERATING &&
-              "Generation du calendrier"}
+            {step === "connect" && "Connecte ton reseau"}
+            {step === "business" && "Ton activite"}
+            {step === "cadence" && "Ta cadence de publication"}
+            {step === "generating" && "Generation du calendrier"}
           </h1>
         </div>
-        {isSaving && <Loader2 className="h-5 w-5 animate-spin text-primary/60" />}
+        {(isSaving || isSyncingAfterCallback) && (
+          <Loader2 className="h-5 w-5 animate-spin text-primary/60" />
+        )}
       </div>
 
       <div className="h-2 overflow-hidden rounded-full bg-primary/10">
         <div
           className="h-full rounded-full bg-primary transition-all"
-          style={{
-            width: `${
-              currentStep === ONBOARDING_STEPS.CONNECT_NETWORK
-                ? 12
-                : currentStep === ONBOARDING_STEPS.BUSINESS_INFO
-                  ? 28
-                  : currentStep === ONBOARDING_STEPS.EDITORIAL_PROFILE
-                    ? 46
-                    : currentStep === ONBOARDING_STEPS.CADENCE
-                      ? 62
-                      : currentStep === ONBOARDING_STEPS.PHOTOS
-                        ? 77
-                        : currentStep === ONBOARDING_STEPS.PAYMENT
-                          ? 89
-                          : currentStep === ONBOARDING_STEPS.GENERATING
-                            ? generationProgress
-                            : 100
-            }%`,
-          }}
+          style={{ width: `${progressPct}%` }}
         />
       </div>
 
-      {currentStep === ONBOARDING_STEPS.CONNECT_NETWORK && (
+      {/* STEP 1: Connect network */}
+      {step === "connect" && (
         <section className="space-y-6">
           <div className="grid gap-4 md:grid-cols-3">
-            <NetworkCard
-              title="Facebook"
-              description="Disponible maintenant pour connecter tes pages."
-              active={hasConnectedFacebook}
-              disabled={false}
-              loading={isConnectingFacebook || isRefreshingFacebook || isSyncingAfterCallback}
+            <button
+              type="button"
               onClick={handleFacebookConnect}
-            />
-            <NetworkCard
-              title="Instagram"
-              description="Bientot disponible au MVP."
-              active={false}
+              className={cn(
+                "rounded-3xl border p-6 text-left transition",
+                hasConnectedFacebook
+                  ? "border-primary bg-primary/5"
+                  : "border-border bg-card",
+              )}
+            >
+              <p className="text-xl font-semibold text-primary">Facebook</p>
+              {(isConnectingFacebook || isRefreshingFacebook || isSyncingAfterCallback) && (
+                <Loader2 className="mt-3 h-4 w-4 animate-spin text-primary/60" />
+              )}
+              <p className="mt-2 text-sm text-primary/60">
+                Connecter ta page Facebook
+              </p>
+            </button>
+            <button
+              type="button"
               disabled
-            />
-            <NetworkCard
-              title="LinkedIn"
-              description="Bientot disponible au MVP."
-              active={false}
+              className="cursor-not-allowed rounded-3xl border border-border bg-card p-6 text-left opacity-50"
+            >
+              <p className="text-xl font-semibold text-primary">Instagram</p>
+              <p className="mt-2 text-sm text-primary/60">Bientot</p>
+            </button>
+            <button
+              type="button"
               disabled
-            />
+              className="cursor-not-allowed rounded-3xl border border-border bg-card p-6 text-left opacity-50"
+            >
+              <p className="text-xl font-semibold text-primary">LinkedIn</p>
+              <p className="mt-2 text-sm text-primary/60">Bientot</p>
+            </button>
           </div>
 
-          <div className="rounded-3xl border border-border bg-card p-6 shadow-sm">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <p className="text-lg font-semibold text-primary">
-                  Pages Facebook connectees
-                </p>
-                <p className="mt-1 text-sm text-primary/60">
-                  Selectionne la page a analyser et a publier.
-                </p>
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => refreshFacebookPages({})}
-                disabled={isRefreshingFacebook}
-              >
-                {isRefreshingFacebook && (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                )}
-                Rafraichir
-              </Button>
+          {facebookConnectionError && (
+            <div className="rounded-2xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+              {facebookConnectionError}
             </div>
+          )}
 
-            {facebookConnectionError && (
-              <div className="mt-6 rounded-2xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
-                <p className="font-medium">Connexion Facebook indisponible</p>
-                <p className="mt-1">{facebookConnectionError}</p>
-                <pre className="mt-3 overflow-x-auto rounded-lg bg-black/5 p-3 text-xs text-foreground/80">
-{`npx convex env set UPLOAD_POST_API_KEY <your-upload-post-api-key>
-npx convex env set SITE_URL https://socialpulse-plum.vercel.app`}
-                </pre>
-              </div>
-            )}
-
-            {(user.facebookPages?.length ?? 0) === 0 && (
-              <p className="mt-6 rounded-2xl bg-secondary/60 p-4 text-sm text-primary/70">
-                Aucune page detectee pour le moment. Connecte ta page Facebook
-                puis reviens ici.
+          {(user.facebookPages?.length ?? 0) > 0 && (
+            <div className="rounded-3xl border border-border bg-card p-6 shadow-sm">
+              <p className="text-lg font-semibold text-primary">
+                Pages detectees
               </p>
-            )}
-
-            {(user.facebookPages?.length ?? 0) > 0 && (
-              <div className="mt-6 grid gap-3 md:grid-cols-2">
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
                 {user.facebookPages?.map((page) => (
-                  <ChoiceCard
+                  <button
                     key={page.id}
-                    title={page.name}
-                    description={page.id}
-                    active={user.selectedFacebookPageId === page.id}
+                    type="button"
+                    className={cn(
+                      "rounded-2xl border p-5 text-left transition",
+                      user.selectedFacebookPageId === page.id
+                        ? "border-primary bg-primary/5"
+                        : "border-border hover:border-primary/40",
+                    )}
                     onClick={() =>
                       chooseFacebookPage({ facebookPageId: page.id })
                     }
-                    loading={
-                      isSelectingFacebookPage &&
-                      user.selectedFacebookPageId !== page.id
-                    }
-                  />
+                  >
+                    <p className="font-semibold text-primary">{page.name}</p>
+                    <p className="mt-1 text-xs text-primary/60">{page.id}</p>
+                  </button>
                 ))}
               </div>
-            )}
-
-            <div className="mt-6 flex justify-end">
-              <Button
-                type="button"
-                onClick={() => goToStep(ONBOARDING_STEPS.BUSINESS_INFO)}
-                disabled={!user.selectedFacebookPageId}
-              >
-                Continuer
-              </Button>
-            </div>
-          </div>
-        </section>
-      )}
-
-      {currentStep === ONBOARDING_STEPS.BUSINESS_INFO && (
-        <section className="rounded-3xl border border-border bg-card p-8 shadow-sm">
-          <div className="mb-8 flex items-start justify-between gap-6">
-            <div>
-              <p className="text-sm text-primary/60">
-                Route questionnaire MVP. L'analyse automatique de page sera
-                branchee ensuite sur la meme etape.
-              </p>
-              <h2 className="mt-2 text-2xl font-semibold text-primary">
-                {questionIndex === 0 && "Vous faites quoi ?"}
-                {questionIndex === 1 && "Vos clients ?"}
-                {questionIndex === 2 && "Quel ton ?"}
-                {questionIndex === 3 && "Votre truc en plus ?"}
-                {questionIndex === 4 && "Quelle langue ?"}
-              </h2>
-            </div>
-            <span className="rounded-full bg-secondary px-3 py-1 text-sm text-primary/70">
-              Question {Math.min(questionIndex + 1, 5)} / 5
-            </span>
-          </div>
-
-          {questionIndex === 0 && (
-            <div className="space-y-4">
-              <Input
-                value={questionnaire.businessCategory}
-                onChange={(event) =>
-                  setQuestionnaire((previous) => ({
-                    ...previous,
-                    businessCategory: event.target.value,
-                  }))
-                }
-                placeholder="Ex: coiffure, restaurant, coaching, boutique"
-              />
-              <div className="flex flex-wrap gap-2">
-                {["Coiffure", "Restaurant", "Coaching", "Boutique"].map(
-                  (suggestion) => (
-                    <button
-                      key={suggestion}
-                      type="button"
-                      className="rounded-full border border-border px-3 py-1 text-sm text-primary/70 hover:border-primary hover:text-primary"
-                      onClick={() =>
-                        setQuestionnaire((previous) => ({
-                          ...previous,
-                          businessCategory: suggestion,
-                        }))
-                      }
-                    >
-                      {suggestion}
-                    </button>
-                  ),
-                )}
-              </div>
             </div>
           )}
 
-          {questionIndex === 1 && (
-            <div className="grid gap-3 md:grid-cols-3">
-              {(
-                Object.keys(audienceCopy) as TargetAudience[]
-              ).map((audience) => (
-                <ChoiceCard
-                  key={audience}
-                  active={questionnaire.targetAudience === audience}
-                  title={audienceCopy[audience]}
-                  onClick={() =>
-                    setQuestionnaire((previous) => ({
-                      ...previous,
-                      targetAudience: audience,
-                    }))
-                  }
-                />
-              ))}
-            </div>
+          {(user.facebookPages?.length ?? 0) === 0 && !facebookConnectionError && (
+            <p className="rounded-2xl bg-secondary/60 p-4 text-sm text-primary/70">
+              Connecte ta page Facebook pour commencer.
+            </p>
           )}
 
-          {questionIndex === 2 && (
-            <div className="grid gap-3 md:grid-cols-2">
-              {(Object.keys(toneCopy) as BrandTone[]).map((tone) => (
-                <ChoiceCard
-                  key={tone}
-                  active={questionnaire.brandTone === tone}
-                  title={toneCopy[tone].title}
-                  description={toneCopy[tone].example}
-                  onClick={() =>
-                    setQuestionnaire((previous) => ({
-                      ...previous,
-                      brandTone: tone,
-                    }))
-                  }
-                />
-              ))}
-            </div>
-          )}
-
-          {questionIndex === 3 && (
-            <Input
-              value={questionnaire.differentiator}
-              onChange={(event) =>
-                setQuestionnaire((previous) => ({
-                  ...previous,
-                  differentiator: event.target.value,
-                }))
-              }
-              placeholder="Ex: Specialise en tresses africaines depuis 10 ans"
-            />
-          )}
-
-          {questionIndex === 4 && (
-            <div className="grid gap-3 md:grid-cols-3">
-              {(
-                Object.keys(languageCopy) as ContentLanguage[]
-              ).map((language) => (
-                <ChoiceCard
-                  key={language}
-                  active={questionnaire.contentLanguage === language}
-                  title={languageCopy[language]}
-                  onClick={() =>
-                    setQuestionnaire((previous) => ({
-                      ...previous,
-                      contentLanguage: language,
-                    }))
-                  }
-                />
-              ))}
-            </div>
-          )}
-
-          <div className="mt-8 flex items-center justify-between">
+          <div className="flex justify-end">
             <Button
-              type="button"
-              variant="ghost"
-              disabled={questionIndex === 0}
-              onClick={() => {
-                if (questionIndex === 1) {
-                  setQuestionnaire((previous) => ({
-                    ...previous,
-                    targetAudience: "",
-                  }));
-                }
-                if (questionIndex === 2) {
-                  setQuestionnaire((previous) => ({
-                    ...previous,
-                    brandTone: "",
-                  }));
-                }
-                if (questionIndex === 3) {
-                  setQuestionnaire((previous) => ({
-                    ...previous,
-                    differentiator: "",
-                  }));
-                }
-                if (questionIndex === 4) {
-                  setQuestionnaire((previous) => ({
-                    ...previous,
-                    contentLanguage: "",
-                  }));
-                }
-              }}
-            >
-              Retour
-            </Button>
-            <Button
-              type="button"
-              onClick={saveQuestionnaire}
-              disabled={questionIndex < 5}
+              onClick={goToBusiness}
+              disabled={!user.selectedFacebookPageId}
             >
               Continuer
             </Button>
@@ -750,157 +422,147 @@ npx convex env set SITE_URL https://socialpulse-plum.vercel.app`}
         </section>
       )}
 
-      {currentStep === ONBOARDING_STEPS.EDITORIAL_PROFILE && (
+      {/* STEP 2: Secteur d'activite */}
+      {step === "business" && (
         <section className="space-y-6 rounded-3xl border border-border bg-card p-8 shadow-sm">
-          <div className="flex items-start justify-between gap-6">
-            <div>
-              <div className="inline-flex rounded-full bg-secondary px-3 py-1 text-sm text-primary/70">
-                <Sparkles className="mr-2 h-4 w-4" />
-                {questionnaire.businessCategory || "Activite locale"}
-              </div>
-              <h2 className="mt-3 text-2xl font-semibold text-primary">
-                {editorialDraft.summary}
-              </h2>
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setIsEditingEditorial((value) => !value)}
-            >
-              {isEditingEditorial ? "Annuler" : "Modifier"}
-            </Button>
+          <div>
+            <p className="text-sm text-primary/60">
+              Dis-nous en plus sur ton activite pour personnaliser ton contenu.
+            </p>
           </div>
 
-          {isEditingEditorial ? (
-            <div className="grid gap-4">
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium text-primary">
+                Secteur d'activite
+              </label>
               <Input
-                value={editorialDraft.summary}
-                onChange={(event) =>
-                  setEditorialDraft((previous) => ({
-                    ...previous,
-                    summary: event.target.value,
-                  }))
-                }
-                placeholder="Resume editorial"
+                className="mt-2"
+                value={businessCategory}
+                onChange={(e) => setBusinessCategory(e.target.value)}
+                placeholder="Ex: coiffure, restaurant, coaching, boutique"
               />
-              <Input
-                value={editorialDraft.themesText}
-                onChange={(event) =>
-                  setEditorialDraft((previous) => ({
-                    ...previous,
-                    themesText: event.target.value,
-                  }))
-                }
-                placeholder="Themes separes par des virgules"
-              />
-              <textarea
-                className="min-h-24 rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                value={editorialDraft.scheduleText}
-                onChange={(event) =>
-                  setEditorialDraft((previous) => ({
-                    ...previous,
-                    scheduleText: event.target.value,
-                  }))
-                }
-              />
-              <textarea
-                className="min-h-32 rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                value={editorialDraft.samplePostsText}
-                onChange={(event) =>
-                  setEditorialDraft((previous) => ({
-                    ...previous,
-                    samplePostsText: event.target.value,
-                  }))
-                }
-              />
-            </div>
-          ) : (
-            <>
-              <div className="flex flex-wrap gap-2">
-                {editorialDraft.themesText
-                  .split(",")
-                  .map((item) => item.trim())
-                  .filter(Boolean)
-                  .map((theme) => (
-                    <span
-                      key={theme}
-                      className="rounded-full bg-secondary px-3 py-1 text-sm text-primary/70"
+              <div className="mt-2 flex flex-wrap gap-2">
+                {["Coiffure", "Restaurant", "Hotel", "Coaching", "Boutique"].map(
+                  (s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      className="rounded-full border border-border px-3 py-1 text-sm text-primary/70 hover:border-primary hover:text-primary"
+                      onClick={() => setBusinessCategory(s)}
                     >
-                      {theme}
-                    </span>
-                  ))}
+                      {s}
+                    </button>
+                  ),
+                )}
               </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="rounded-2xl bg-secondary/60 p-5">
-                  <p className="text-sm font-medium text-primary">Creneaux recommandes</p>
-                  <ul className="mt-3 space-y-2 text-sm text-primary/70">
-                    {editorialDraft.scheduleText
-                      .split("\n")
-                      .map((item) => item.trim())
-                      .filter(Boolean)
-                      .map((slot) => (
-                        <li key={slot}>{slot}</li>
-                      ))}
-                  </ul>
-                </div>
-                <div className="rounded-2xl bg-secondary/60 p-5">
-                  <p className="text-sm font-medium text-primary">Exemples de posts</p>
-                  <div className="mt-3 space-y-3 text-sm text-primary/70">
-                    {editorialDraft.samplePostsText
-                      .split("\n")
-                      .map((item) => item.trim())
-                      .filter(Boolean)
-                      .map((post) => (
-                        <p key={post} className="rounded-xl bg-card p-3">
-                          {post}
-                        </p>
-                      ))}
-                  </div>
-                </div>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium text-primary">
+                Tes clients
+              </label>
+              <div className="mt-2 flex gap-3">
+                {(Object.keys(audienceCopy) as TargetAudience[]).map((a) => (
+                  <button
+                    key={a}
+                    type="button"
+                    className={cn(
+                      "rounded-full border px-4 py-2 text-sm",
+                      targetAudience === a
+                        ? "border-primary bg-primary/5 text-primary"
+                        : "border-border text-primary/60",
+                    )}
+                    onClick={() => setTargetAudience(a)}
+                  >
+                    {audienceCopy[a]}
+                  </button>
+                ))}
               </div>
-            </>
-          )}
+            </div>
+
+            <div>
+              <label className="text-sm font-medium text-primary">Ton</label>
+              <div className="mt-2 flex flex-wrap gap-3">
+                {(Object.keys(toneCopy) as BrandTone[]).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    className={cn(
+                      "rounded-full border px-4 py-2 text-sm",
+                      brandTone === t
+                        ? "border-primary bg-primary/5 text-primary"
+                        : "border-border text-primary/60",
+                    )}
+                    onClick={() => setBrandTone(t)}
+                  >
+                    {toneCopy[t]}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium text-primary">Langue</label>
+              <div className="mt-2 flex gap-3">
+                {(Object.keys(languageCopy) as ContentLanguage[]).map((l) => (
+                  <button
+                    key={l}
+                    type="button"
+                    className={cn(
+                      "rounded-full border px-4 py-2 text-sm",
+                      contentLanguage === l
+                        ? "border-primary bg-primary/5 text-primary"
+                        : "border-border text-primary/60",
+                    )}
+                    onClick={() => setContentLanguage(l)}
+                  >
+                    {languageCopy[l]}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
 
           <div className="flex justify-between">
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => goToStep(ONBOARDING_STEPS.BUSINESS_INFO)}
-            >
+            <Button variant="ghost" onClick={() => setStep("connect")}>
               Retour
             </Button>
-            <Button type="button" onClick={saveEditorial}>
-              C'est bien moi
+            <Button
+              onClick={saveBusiness}
+              disabled={!businessCategory.trim()}
+            >
+              Continuer
             </Button>
           </div>
         </section>
       )}
 
-      {currentStep === ONBOARDING_STEPS.CADENCE && (
+      {/* STEP 3: Cadence + CTA Generer */}
+      {step === "cadence" && (
         <section className="space-y-6 rounded-3xl border border-border bg-card p-8 shadow-sm">
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            {cadenceOptions.map((option) => (
+            {cadenceOptions.map((opt) => (
               <button
-                key={option.value}
+                key={opt.value}
                 type="button"
                 className={cn(
                   "rounded-2xl border p-5 text-left transition",
-                  selectedCadence === option.value
+                  selectedCadence === opt.value
                     ? "border-primary bg-primary/5"
                     : "border-border hover:border-primary/40",
                 )}
-                onClick={() => setSelectedCadence(option.value)}
+                onClick={() => setSelectedCadence(opt.value)}
               >
-                {option.value === 5 && (
+                {opt.value === 5 && (
                   <span className="mb-3 inline-flex rounded-full bg-primary px-2 py-1 text-xs font-medium text-primary-foreground">
                     Recommande
                   </span>
                 )}
-                <p className="text-xl font-semibold text-primary">{option.title}</p>
-                <p className="mt-1 text-sm font-medium text-primary/70">
-                  {option.subtitle}
+                <p className="text-xl font-semibold text-primary">
+                  {opt.title}
                 </p>
-                <p className="mt-3 text-sm text-primary/60">{option.description}</p>
+                <p className="mt-1 text-sm text-primary/70">{opt.subtitle}</p>
               </button>
             ))}
           </div>
@@ -909,175 +571,77 @@ npx convex env set SITE_URL https://socialpulse-plum.vercel.app`}
             <div>
               <p className="text-sm font-medium text-primary">Reseaux</p>
               <div className="mt-3 flex flex-wrap gap-3">
-                {(Object.keys(networkLabels) as Network[]).map((platform) => (
+                {(Object.keys(networkLabels) as Network[]).map((p) => (
                   <button
-                    key={platform}
+                    key={p}
                     type="button"
                     className={cn(
                       "rounded-full border px-4 py-2 text-sm",
-                      selectedPlatforms.includes(platform)
+                      selectedPlatforms.includes(p)
                         ? "border-primary bg-primary/5 text-primary"
                         : "border-border text-primary/60",
                     )}
-                    disabled={platform !== NETWORKS.FACEBOOK}
-                    onClick={() => togglePostingPlatform(platform)}
+                    disabled={p !== NETWORKS.FACEBOOK}
+                    onClick={() =>
+                      setSelectedPlatforms((prev) =>
+                        prev.includes(p)
+                          ? prev.length > 1
+                            ? prev.filter((x) => x !== p)
+                            : prev
+                          : [...prev, p],
+                      )
+                    }
                   >
-                    {networkLabels[platform]}
-                    {platform !== NETWORKS.FACEBOOK && " (bientot)"}
+                    {networkLabels[p]}
+                    {p !== NETWORKS.FACEBOOK && " (bientot)"}
                   </button>
                 ))}
               </div>
             </div>
-
             <div>
               <p className="text-sm font-medium text-primary">Duree</p>
               <div className="mt-3 flex gap-3">
-                {durationOptions.map((duration) => (
+                {durationOptions.map((d) => (
                   <button
-                    key={duration}
+                    key={d}
                     type="button"
                     className={cn(
                       "rounded-full border px-4 py-2 text-sm",
-                      selectedDuration === duration
+                      selectedDuration === d
                         ? "border-primary bg-primary/5 text-primary"
                         : "border-border text-primary/60",
                     )}
-                    onClick={() => setSelectedDuration(duration)}
+                    onClick={() => setSelectedDuration(d)}
                   >
-                    {duration} semaines
+                    {d} semaines
                   </button>
                 ))}
               </div>
             </div>
           </div>
 
-          <div className="rounded-2xl bg-secondary/60 p-5 text-primary">
+          <div className="rounded-2xl bg-secondary/60 p-5">
             <p className="text-sm text-primary/60">Recapitulatif</p>
-            <p className="mt-2 text-lg font-semibold">
-              {selectedCadence} posts/sem x {selectedPlatforms.length} reseaux x{" "}
+            <p className="mt-2 text-lg font-semibold text-primary">
+              {selectedCadence} posts/sem × {selectedPlatforms.length} reseau ×{" "}
               {selectedDuration} semaines = {totalPosts} posts
             </p>
-            <p className="mt-1 text-sm text-primary/70">
-              Pack Essentiel {estimatedPrice.toLocaleString("fr-FR")} FCFA
-            </p>
           </div>
 
           <div className="flex justify-between">
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => goToStep(ONBOARDING_STEPS.EDITORIAL_PROFILE)}
-            >
+            <Button variant="ghost" onClick={() => setStep("business")}>
               Retour
             </Button>
-            <Button type="button" onClick={saveCadence}>
-              Continuer
+            <Button onClick={launchGeneration} className="gap-2">
+              <Sparkles className="h-4 w-4" />
+              Generer mon calendrier
             </Button>
           </div>
         </section>
       )}
 
-      {currentStep === ONBOARDING_STEPS.PHOTOS && (
-        <section className="space-y-6 rounded-3xl border border-border bg-card p-8 shadow-sm">
-          <div>
-            <p className="text-sm text-primary/60">
-              Ajoute tes photos pour un contenu plus authentique. Le shell stocke
-              pour l'instant le volume uniquement, pas encore les assets definitifs.
-            </p>
-          </div>
-          <label className="flex min-h-56 cursor-pointer flex-col items-center justify-center rounded-3xl border border-dashed border-border bg-secondary/40 p-8 text-center">
-            <input
-              type="file"
-              multiple
-              accept="image/*"
-              className="hidden"
-              onChange={(event) =>
-                setPhotoFiles(Array.from(event.target.files ?? []))
-              }
-            />
-            <p className="text-lg font-medium text-primary">
-              Depose tes photos ou clique pour choisir
-            </p>
-            <p className="mt-2 text-sm text-primary/60">
-              1 a 50 photos. Tu pourras en ajouter plus tard.
-            </p>
-          </label>
-          {photoFiles.length > 0 && (
-            <div className="grid gap-3 md:grid-cols-2">
-              {photoFiles.slice(0, 6).map((file) => (
-                <div
-                  key={file.name}
-                  className="rounded-2xl border border-border bg-secondary/40 p-4 text-sm text-primary/70"
-                >
-                  <p className="font-medium text-primary">{file.name}</p>
-                  <p className="mt-2 text-xs">
-                    Tags a venir: equipe, coulisses, avant/apres
-                  </p>
-                </div>
-              ))}
-            </div>
-          )}
-          <div className="flex justify-between">
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => goToStep(ONBOARDING_STEPS.CADENCE)}
-            >
-              Retour
-            </Button>
-            <div className="flex gap-3">
-              <Button type="button" variant="outline" onClick={savePhotos}>
-                Passer cette etape
-              </Button>
-              <Button type="button" onClick={savePhotos}>
-                Continuer
-              </Button>
-            </div>
-          </div>
-        </section>
-      )}
-
-      {currentStep === ONBOARDING_STEPS.PAYMENT && (
-        <section className="space-y-6 rounded-3xl border border-border bg-card p-8 shadow-sm">
-          <div className="rounded-2xl bg-secondary/60 p-5">
-            <p className="text-sm text-primary/60">Ton pack</p>
-            <p className="mt-2 text-xl font-semibold text-primary">
-              {totalPosts} posts pour {selectedDuration} semaines
-            </p>
-            <p className="mt-1 text-sm text-primary/70">
-              {selectedCadence} posts/semaine, {selectedPlatforms.length} reseau(x)
-            </p>
-            <p className="mt-3 text-lg font-semibold text-primary">
-              {estimatedPrice.toLocaleString("fr-FR")} FCFA
-            </p>
-          </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            <ChoiceCard
-              title="Mobile Money"
-              description="Orange Money / MTN MoMo"
-              active={user.paymentMethod === PAYMENT_METHODS.MOBILE_MONEY}
-              onClick={() => savePayment(PAYMENT_METHODS.MOBILE_MONEY)}
-            />
-            <ChoiceCard
-              title="Carte bancaire"
-              description="Paiement Stripe"
-              active={user.paymentMethod === PAYMENT_METHODS.CARD}
-              onClick={() => savePayment(PAYMENT_METHODS.CARD)}
-            />
-          </div>
-          <div className="flex justify-between">
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => goToStep(ONBOARDING_STEPS.PHOTOS)}
-            >
-              Retour
-            </Button>
-          </div>
-        </section>
-      )}
-
-      {currentStep === ONBOARDING_STEPS.GENERATING && (
+      {/* STEP 4: Generating */}
+      {step === "generating" && (
         <section className="space-y-6 rounded-3xl border border-border bg-card p-8 text-center shadow-sm">
           <div className="mx-auto max-w-xl">
             <h2 className="text-2xl font-semibold text-primary">
@@ -1085,7 +649,7 @@ npx convex env set SITE_URL https://socialpulse-plum.vercel.app`}
             </h2>
             <p className="mt-3 text-sm text-primary/60">
               Redaction des posts, creation des visuels et optimisation des
-              horaires. Cet ecran simule deja le moment de magie du produit.
+              horaires.
             </p>
           </div>
           <div className="mx-auto w-full max-w-2xl rounded-full bg-primary/10 p-1">
@@ -1114,70 +678,28 @@ npx convex env set SITE_URL https://socialpulse-plum.vercel.app`}
               </div>
             ))}
           </div>
+          {generationError && (
+            <div className="mx-auto max-w-2xl rounded-2xl border border-destructive/30 bg-destructive/10 p-4 text-left text-sm text-destructive">
+              <p className="font-medium">Generation interrompue</p>
+              <p className="mt-1">{generationError}</p>
+              <div className="mt-4">
+                <Button
+                  variant="outline"
+                  disabled={isGeneratingCalendar}
+                  onClick={() => {
+                    generationStartedRef.current = false;
+                    setGenerationError(null);
+                    setGenerationProgress(8);
+                    setStep("generating");
+                  }}
+                >
+                  Relancer la generation
+                </Button>
+              </div>
+            </div>
+          )}
         </section>
       )}
     </div>
-  );
-}
-
-function NetworkCard({
-  title,
-  description,
-  active,
-  disabled,
-  loading,
-  onClick,
-}: {
-  title: string;
-  description: string;
-  active: boolean;
-  disabled: boolean;
-  loading?: boolean;
-  onClick?: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      className={cn(
-        "rounded-3xl border p-6 text-left transition",
-        active ? "border-primary bg-primary/5" : "border-border bg-card",
-        disabled && "cursor-not-allowed opacity-50",
-      )}
-    >
-      <p className="text-xl font-semibold text-primary">{title}</p>
-      {loading && <Loader2 className="mt-3 h-4 w-4 animate-spin text-primary/60" />}
-      <p className="mt-2 text-sm text-primary/60">{description}</p>
-    </button>
-  );
-}
-
-function ChoiceCard({
-  title,
-  description,
-  active,
-  loading,
-  onClick,
-}: {
-  title: string;
-  description?: string;
-  active: boolean;
-  loading?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      className={cn(
-        "rounded-2xl border p-5 text-left transition",
-        active ? "border-primary bg-primary/5" : "border-border hover:border-primary/40",
-      )}
-      onClick={onClick}
-    >
-      <p className="font-semibold text-primary">{title}</p>
-      {loading && <Loader2 className="mt-2 h-4 w-4 animate-spin text-primary/60" />}
-      {description && <p className="mt-2 text-sm text-primary/60">{description}</p>}
-    </button>
   );
 }

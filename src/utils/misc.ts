@@ -39,6 +39,6 @@ export const useSignOut = () => {
   return async () => {
     await signOut();
     router.invalidate();
-    navigate({ to: "/login" });
+    navigate({ to: "/" });
   };
 };

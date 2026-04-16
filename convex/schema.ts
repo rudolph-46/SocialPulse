@@ -122,6 +122,72 @@ export const facebookPageValidator = v.object({
 });
 export type FacebookPage = Infer<typeof facebookPageValidator>;
 
+export const POST_CATEGORIES = {
+  VALUE: "value",
+  BEHIND_SCENES: "behind_scenes",
+  PROMO: "promo",
+  ENGAGEMENT: "engagement",
+  TREND: "trend",
+} as const;
+export const postCategoryValidator = v.union(
+  v.literal(POST_CATEGORIES.VALUE),
+  v.literal(POST_CATEGORIES.BEHIND_SCENES),
+  v.literal(POST_CATEGORIES.PROMO),
+  v.literal(POST_CATEGORIES.ENGAGEMENT),
+  v.literal(POST_CATEGORIES.TREND),
+);
+export type PostCategory = Infer<typeof postCategoryValidator>;
+
+export const IMAGE_SOURCES = {
+  REAL: "real",
+  AI: "ai",
+  PENDING: "pending",
+} as const;
+export const imageSourceValidator = v.union(
+  v.literal(IMAGE_SOURCES.REAL),
+  v.literal(IMAGE_SOURCES.AI),
+  v.literal(IMAGE_SOURCES.PENDING),
+);
+export type ImageSource = Infer<typeof imageSourceValidator>;
+
+export const POST_STATUSES = {
+  DRAFT: "draft",
+  APPROVED: "approved",
+  SCHEDULED: "scheduled",
+  PUBLISHED: "published",
+  FAILED: "failed",
+} as const;
+export const postStatusValidator = v.union(
+  v.literal(POST_STATUSES.DRAFT),
+  v.literal(POST_STATUSES.APPROVED),
+  v.literal(POST_STATUSES.SCHEDULED),
+  v.literal(POST_STATUSES.PUBLISHED),
+  v.literal(POST_STATUSES.FAILED),
+);
+export type PostStatus = Infer<typeof postStatusValidator>;
+
+export const CALENDAR_STATUSES = {
+  DRAFT: "draft",
+  ACTIVE: "active",
+  ARCHIVED: "archived",
+} as const;
+export const calendarStatusValidator = v.union(
+  v.literal(CALENDAR_STATUSES.DRAFT),
+  v.literal(CALENDAR_STATUSES.ACTIVE),
+  v.literal(CALENDAR_STATUSES.ARCHIVED),
+);
+export type CalendarStatus = Infer<typeof calendarStatusValidator>;
+
+export const CHANNEL_STATUSES = {
+  CONNECTED: "connected",
+  DISCONNECTED: "disconnected",
+} as const;
+export const channelStatusValidator = v.union(
+  v.literal(CHANNEL_STATUSES.CONNECTED),
+  v.literal(CHANNEL_STATUSES.DISCONNECTED),
+);
+export type ChannelStatus = Infer<typeof channelStatusValidator>;
+
 export const CREDIT_TRANSACTION_TYPES = {
   PURCHASE: "purchase",
   CONSUMPTION: "consumption",
@@ -235,6 +301,58 @@ const schema = defineSchema({
   })
     .index("userId", ["userId"])
     .index("stripeId", ["stripeId"]),
+  channels: defineTable({
+    userId: v.id("users"),
+    platform: networkValidator,
+    name: v.string(),
+    externalId: v.string(),
+    imageUrl: v.optional(v.string()),
+    status: channelStatusValidator,
+    connectedAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_platform_external", ["platform", "externalId"]),
+  editorial_calendars: defineTable({
+    channelId: v.id("channels"),
+    userId: v.id("users"),
+    title: v.string(),
+    status: calendarStatusValidator,
+    startDate: v.number(),
+    endDate: v.number(),
+    cadence: v.number(),
+    platforms: v.array(v.string()),
+    categoriesRatio: v.any(),
+    totalPosts: v.number(),
+    totalCreditsEstimated: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_channel", ["channelId"])
+    .index("by_user", ["userId"]),
+  posts: defineTable({
+    channelId: v.id("channels"),
+    calendarId: v.id("editorial_calendars"),
+    platform: networkValidator,
+    textFacebook: v.optional(v.string()),
+    textInstagram: v.optional(v.string()),
+    textLinkedin: v.optional(v.string()),
+    hashtags: v.optional(v.array(v.string())),
+    imageUrl: v.optional(v.string()),
+    imageAiPrompt: v.optional(v.string()),
+    imageSource: imageSourceValidator,
+    category: postCategoryValidator,
+    scheduledAt: v.number(),
+    publishedAt: v.optional(v.number()),
+    status: postStatusValidator,
+    creditsConsumed: v.number(),
+    analytics: v.optional(v.any()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_channel", ["channelId"])
+    .index("by_calendar", ["calendarId"])
+    .index("by_status", ["status"])
+    .index("by_scheduled", ["scheduledAt"]),
   credit_transactions: defineTable({
     userId: v.id("users"),
     type: creditTransactionTypeValidator,

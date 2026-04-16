@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Logo } from "../ui/logo";
 import { cn } from "@/utils/misc";
 import { buttonVariants } from "@/ui/button-util";
@@ -8,8 +8,13 @@ import siteConfig from "~/site.config";
 import { ThemeSwitcherHome } from "@/ui/theme-switcher";
 import ShadowPNG from "/images/shadow.png";
 import { useConvexAuth } from "@convex-dev/react-query";
-import { Route as AuthLoginRoute } from "@/routes/_app/login/_layout.index";
 import { Route as DashboardRoute } from "@/routes/_app/_auth/dashboard/_layout.index";
+import { Route as OnboardingRoute } from "@/routes/_app/_auth/onboarding/_layout.index";
+import { useAuthActions } from "@convex-dev/auth/react";
+import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { convexQuery } from "@convex-dev/react-query";
+import { api } from "@cvx/_generated/api";
 
 export const Route = createFileRoute("/")({
   component: Index,
@@ -17,7 +22,31 @@ export const Route = createFileRoute("/")({
 
 function Index() {
   const { isLoading, isAuthenticated } = useConvexAuth();
+  const { signIn } = useAuthActions();
+  const navigate = useNavigate();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { data: user } = useQuery(convexQuery(api.app.getCurrentUser, {}));
   const theme = "dark";
+
+  useEffect(() => {
+    if (!isLoading && isAuthenticated && user) {
+      navigate({
+        to: user.onboardingCompletedAt
+          ? DashboardRoute.fullPath
+          : OnboardingRoute.fullPath,
+      });
+    }
+  }, [isAuthenticated, isLoading, navigate, user]);
+
+  const handleGoogleSignIn = async () => {
+    setIsSubmitting(true);
+    try {
+      await signIn("google", { redirectTo: OnboardingRoute.fullPath });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <div className="relative flex h-full w-full flex-col bg-card">
       {/* Navigation */}
@@ -84,17 +113,13 @@ function Index() {
             </svg>
           </a>
           <Link
-            to={
-              isAuthenticated
-                ? DashboardRoute.fullPath
-                : AuthLoginRoute.fullPath
-            }
+            to={isAuthenticated ? DashboardRoute.fullPath : "/login"}
             className={buttonVariants({ size: "sm" })}
             disabled={isLoading}
           >
             {isLoading && <Loader2 className="animate-spin w-16 h-4" />}
             {!isLoading && isAuthenticated && "Dashboard"}
-            {!isLoading && !isAuthenticated && "Get Started"}
+            {!isLoading && !isAuthenticated && "Sign in"}
           </Link>
         </div>
       </div>
@@ -139,12 +164,18 @@ function Index() {
             TanStack-powered. Open Source.
           </p>
           <div className="mt-2 flex w-full items-center justify-center gap-2">
-            <Link
-              to={AuthLoginRoute.fullPath}
-              className={cn(buttonVariants({ size: "sm" }), "hidden sm:flex")}
+            <Button
+              type="button"
+              size="sm"
+              className="hidden gap-2 sm:flex"
+              onClick={handleGoogleSignIn}
+              disabled={isLoading || isSubmitting}
             >
-              Get Started
-            </Link>
+              {(isLoading || isSubmitting) && (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              )}
+              Sign in with Google
+            </Button>
             <a
               href="https://github.com/get-convex/convex-saas/tree/main/docs"
               target="_blank"
@@ -157,6 +188,18 @@ function Index() {
               Explore Documentation
             </a>
           </div>
+          <Button
+            type="button"
+            size="sm"
+            className="mt-2 gap-2 sm:hidden"
+            onClick={handleGoogleSignIn}
+            disabled={isLoading || isSubmitting}
+          >
+            {(isLoading || isSubmitting) && (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            )}
+            Sign in with Google
+          </Button>
         </div>
         <div className="flex w-full flex-col items-center justify-center gap-2">
           <h2 className="text-center font-serif text-xl font-medium text-primary/60">
@@ -510,10 +553,10 @@ function Index() {
               Build your app on a solid, scalable, well-tested foundation.
             </p>
             <Link
-              to={AuthLoginRoute.fullPath}
+              to="/login"
               className={buttonVariants({ size: "sm" })}
             >
-              Get Started
+              Sign in
             </Link>
           </div>
           <div className="flex w-full flex-col items-start justify-center gap-6 p-10 lg:w-[60%] lg:border-b-0 lg:p-12">

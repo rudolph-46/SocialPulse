@@ -13,9 +13,9 @@ function AuthLayout() {
   useEffect(() => {
     // Redirect to login page if user is not authenticated.
     if (!isLoading && !isAuthenticated) {
-      navigate({ to: "/login" });
+      navigate({ to: "/" });
     }
-  }, [isLoading, isAuthenticated]);
+  }, [isAuthenticated, isLoading, navigate]);
 
   if (isLoading && !isAuthenticated) {
     return null;
