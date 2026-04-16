@@ -35,7 +35,10 @@ function CreditsPage() {
 
   const [loadingPackId, setLoadingPackId] = useState<string | null>(null);
 
-  const balance = balanceData?.balance ?? user?.creditsBalance ?? 0;
+  const balance =
+    (balanceData as { balance?: number } | null)?.balance ??
+    user?.creditsBalance ??
+    0;
 
   const handleBuy = async (packId: string) => {
     setLoadingPackId(packId);
