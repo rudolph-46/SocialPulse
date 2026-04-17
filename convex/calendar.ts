@@ -4,6 +4,7 @@ import {
   action,
   internalMutation,
   internalQuery,
+  mutation,
   query,
 } from "@cvx/_generated/server";
 import {
@@ -18,6 +19,7 @@ import {
   type PostCategory,
 } from "@cvx/schema";
 import { auth } from "@cvx/auth";
+import { ANTHROPIC_API_KEY } from "@cvx/env";
 import { v } from "convex/values";
 
 const CATEGORY_RATIOS: Record<PostCategory, number> = {
@@ -80,7 +82,61 @@ type GeneratedPostDraft = {
   category: PostCategory;
   scheduledAt: number;
   creditsConsumed: number;
+  assignedPhotoId?: Id<"photos">;
 };
+
+type PlannedPost = {
+  slotIndex: number;
+  platform: Network;
+  category: PostCategory;
+  scheduledAt: number;
+};
+
+type ClaudePostDraft = {
+  slotIndex: number;
+  caption: string;
+  hashtags: string[];
+  imagePrompt: string;
+  preferredPhotoTags: string[];
+};
+
+type PhotoAsset = Doc<"photos">;
+
+const CATEGORY_TAGS: Record<PostCategory, string[]> = {
+  [POST_CATEGORIES.VALUE]: ["general", "conseils", "expertise", "temoignage"],
+  [POST_CATEGORIES.BEHIND_SCENES]: ["equipe", "coulisses", "atelier", "general"],
+  [POST_CATEGORIES.PROMO]: ["promo", "offre", "produit", "general"],
+  [POST_CATEGORIES.ENGAGEMENT]: ["client", "temoignage", "evenement", "general"],
+  [POST_CATEGORIES.TREND]: ["evenement", "exterieur", "general", "produit"],
+};
+
+const CALENDAR_PROMPT = `Tu es SocialPulse, expert en content marketing social media.
+
+Tu reçois un profil éditorial, une liste de créneaux déjà optimisés et une catégorie imposée pour chaque post.
+
+Réponds UNIQUEMENT en JSON valide, sans markdown, sans texte additionnel.
+
+Retourne un tableau JSON de cette forme exacte :
+[
+  {
+    "slotIndex": 0,
+    "caption": "texte final adapté à la plateforme",
+    "hashtags": ["#hashtag1", "#hashtag2"],
+    "imagePrompt": "prompt image détaillé si aucune photo réelle ne correspond",
+    "preferredPhotoTags": ["tag1", "tag2", "tag3"]
+  }
+]
+
+Règles :
+- respecte exactement le slotIndex reçu
+- texte Facebook: clair, utile, 60-140 mots
+- texte Instagram: plus court, rythmé, avec 1-3 emojis maximum et hashtags naturels
+- texte LinkedIn: plus professionnel, orienté expertise
+- garde la langue du profil éditorial
+- pas de promesse mensongère
+- pas de doublons entre posts
+- hashtags: 3 à 6 maximum
+- preferredPhotoTags doit aider à choisir une photo réelle pertinente`;
 
 function startOfDay(date: Date) {
   const next = new Date(date);
@@ -229,6 +285,151 @@ function buildHashtags(category: PostCategory, businessCategory: string, themes:
   return Array.from(new Set([categoryTag, ...normalized])).map((tag) => `#${tag}`);
 }
 
+function tokenize(input: string) {
+  return input
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s]+/g, " ")
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length > 2);
+}
+
+function buildPhotoPreferenceTags(input: {
+  category: PostCategory;
+  businessCategory: string;
+  themes: string[];
+  preferredPhotoTags?: string[];
+}) {
+  return Array.from(
+    new Set([
+      ...CATEGORY_TAGS[input.category],
+      ...tokenize(input.businessCategory),
+      ...input.themes.flatMap((theme) => tokenize(theme)),
+      ...(input.preferredPhotoTags ?? []).flatMap((tag) => tokenize(tag)),
+    ]),
+  );
+}
+
+function scorePhoto(photo: PhotoAsset, desiredTags: string[]) {
+  const tags = photo.tags.map((tag) => tokenize(tag)).flat();
+  const overlap = desiredTags.filter((tag) => tags.includes(tag)).length;
+  return overlap * 10 - photo.usedCount;
+}
+
+function selectPhotoForPost(input: {
+  photos: PhotoAsset[];
+  assignedPhotoIds: Set<Id<"photos">>;
+  category: PostCategory;
+  businessCategory: string;
+  themes: string[];
+  preferredPhotoTags?: string[];
+}) {
+  const desiredTags = buildPhotoPreferenceTags({
+    category: input.category,
+    businessCategory: input.businessCategory,
+    themes: input.themes,
+    preferredPhotoTags: input.preferredPhotoTags,
+  });
+
+  const available = input.photos
+    .filter((photo) => !input.assignedPhotoIds.has(photo._id))
+    .map((photo) => ({
+      photo,
+      score: scorePhoto(photo, desiredTags),
+    }))
+    .sort((a, b) => b.score - a.score || a.photo.usedCount - b.photo.usedCount);
+
+  if (available[0] && available[0].score > 0) {
+    input.assignedPhotoIds.add(available[0].photo._id);
+    return available[0].photo;
+  }
+
+  return null;
+}
+
+async function callClaudeCalendar(promptPayload: string) {
+  if (!ANTHROPIC_API_KEY) {
+    throw new Error("ANTHROPIC_API_KEY is not configured");
+  }
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": ANTHROPIC_API_KEY,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 8192,
+      system: CALENDAR_PROMPT,
+      messages: [{ role: "user", content: promptPayload }],
+    }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Claude API error ${response.status}: ${text}`);
+  }
+
+  const payload = (await response.json()) as {
+    content?: Array<{ type: string; text?: string }>;
+  };
+  const text = payload.content?.find((item) => item.type === "text")?.text;
+  if (!text) {
+    throw new Error("Claude returned an empty response");
+  }
+  return text;
+}
+
+function parseClaudeCalendarDrafts(raw: string) {
+  const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+  const parsed = JSON.parse(cleaned);
+  if (!Array.isArray(parsed)) {
+    throw new Error("Claude calendar response must be an array");
+  }
+  return parsed.map((item, index) => ({
+    slotIndex:
+      typeof item.slotIndex === "number" ? item.slotIndex : index,
+    caption:
+      typeof item.caption === "string" ? item.caption.trim() : "",
+    hashtags: Array.isArray(item.hashtags)
+      ? item.hashtags.filter(
+          (tag: unknown): tag is string => typeof tag === "string",
+        )
+      : [],
+    imagePrompt:
+      typeof item.imagePrompt === "string" ? item.imagePrompt.trim() : "",
+    preferredPhotoTags: Array.isArray(item.preferredPhotoTags)
+      ? item.preferredPhotoTags.filter(
+          (tag: unknown): tag is string => typeof tag === "string",
+        )
+      : [],
+  })) as ClaudePostDraft[];
+}
+
+async function generateClaudeDraftsWithRetry(promptPayload: string) {
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const raw = await callClaudeCalendar(promptPayload);
+      return parseClaudeCalendarDrafts(raw);
+    } catch (error) {
+      lastError =
+        error instanceof Error ? error : new Error("Claude parsing failed");
+      if (attempt < 2) {
+        await new Promise((resolve) => setTimeout(resolve, (attempt + 1) * 500));
+      }
+    }
+  }
+
+  throw new Error(
+    `Claude generation failed after 3 attempts: ${lastError?.message ?? "Unknown error"}`,
+  );
+}
+
 function buildPlatformText(input: {
   platform: Network;
   category: PostCategory;
@@ -264,6 +465,41 @@ function buildPlatformText(input: {
   return `${base} ${input.hashtags.slice(0, 3).join(" ")}`;
 }
 
+function buildClaudePrompt(input: {
+  businessCategory: string;
+  editorialSummary: string;
+  editorialThemes: string[];
+  differentiator?: string;
+  platforms: Network[];
+  schedule: string[];
+  plannedPosts: PlannedPost[];
+  availablePhotoTags: string[][];
+}) {
+  const photoTagPool = Array.from(
+    new Set(input.availablePhotoTags.flat().map((tag) => tag.toLowerCase())),
+  ).slice(0, 40);
+
+  return JSON.stringify(
+    {
+      businessCategory: input.businessCategory,
+      editorialSummary: input.editorialSummary,
+      editorialThemes: input.editorialThemes,
+      differentiator: input.differentiator,
+      platforms: input.platforms,
+      recommendedSchedule: input.schedule,
+      availablePhotoTags: photoTagPool,
+      plannedPosts: input.plannedPosts.map((post) => ({
+        slotIndex: post.slotIndex,
+        platform: post.platform,
+        category: post.category,
+        scheduledAt: new Date(post.scheduledAt).toISOString(),
+      })),
+    },
+    null,
+    2,
+  );
+}
+
 function estimateCredits(totalPosts: number, realImageCount: number) {
   const realPosts = Math.min(totalPosts, realImageCount);
   return realPosts + (totalPosts - realPosts) * 2;
@@ -279,8 +515,7 @@ function prepareGeneratedPosts(input: {
   recommendedSchedule: string[];
   samplePosts: string[];
   differentiator?: string;
-  realImageUrls: string[];
-  realImageBudget: number;
+  photos: PhotoAsset[];
 }) {
   const weeklySlots = buildWeeklySlots(input.cadence, input.recommendedSchedule);
   const slotDates: number[] = [];
@@ -294,54 +529,105 @@ function prepareGeneratedPosts(input: {
 
   const totalPosts = slotDates.length * input.platforms.length;
   const categories = buildCategorySequence(totalPosts);
-  let realImageAssignments = 0;
   let categoryIndex = 0;
+  const plannedPosts: PlannedPost[] = [];
 
-  return slotDates.flatMap((scheduledAt, slotIndex) =>
-    input.platforms.map((platform) => {
-      const category = categories[categoryIndex] ?? POST_CATEGORIES.VALUE;
-      categoryIndex += 1;
-      const hashtags = buildHashtags(
-        category,
-        input.businessCategory,
-        input.editorialThemes,
-      );
-      const samplePost = input.samplePosts[slotIndex % Math.max(input.samplePosts.length, 1)];
-      const canUseRealImage =
-        realImageAssignments < input.realImageBudget && input.realImageUrls.length > 0;
-      const realImageUrl =
-        input.realImageUrls[realImageAssignments % Math.max(input.realImageUrls.length, 1)];
-      if (canUseRealImage) {
-        realImageAssignments += 1;
-      }
-      const text = buildPlatformText({
+  for (let slotIndex = 0; slotIndex < slotDates.length; slotIndex += 1) {
+    const scheduledAt = slotDates[slotIndex];
+    for (const platform of input.platforms) {
+      plannedPosts.push({
+        slotIndex: plannedPosts.length,
         platform,
-        category,
+        category: categories[categoryIndex] ?? POST_CATEGORIES.VALUE,
+        scheduledAt,
+      });
+      categoryIndex += 1;
+    }
+  }
+
+  const claudePrompt = buildClaudePrompt({
+    businessCategory: input.businessCategory,
+    editorialSummary: input.editorialSummary,
+    editorialThemes: input.editorialThemes,
+    differentiator: input.differentiator,
+    platforms: input.platforms,
+    schedule: input.recommendedSchedule,
+    plannedPosts,
+    availablePhotoTags: input.photos.map((photo) => photo.tags),
+  });
+
+  return { slotDates, plannedPosts, claudePrompt };
+}
+
+function finalizeGeneratedPosts(input: {
+  plannedPosts: PlannedPost[];
+  generatedDrafts: ClaudePostDraft[];
+  businessCategory: string;
+  editorialSummary: string;
+  editorialThemes: string[];
+  samplePosts: string[];
+  differentiator?: string;
+  photos: PhotoAsset[];
+}) {
+  const assignedPhotoIds = new Set<Id<"photos">>();
+  const draftsBySlot = new Map(
+    input.generatedDrafts.map((draft) => [draft.slotIndex, draft]),
+  );
+
+  return input.plannedPosts.map((plannedPost, index) => {
+    const draft = draftsBySlot.get(plannedPost.slotIndex);
+    const hashtags =
+      draft?.hashtags?.length
+        ? draft.hashtags
+        : buildHashtags(
+            plannedPost.category,
+            input.businessCategory,
+            input.editorialThemes,
+          );
+    const samplePost =
+      input.samplePosts[index % Math.max(input.samplePosts.length, 1)];
+    const photo = selectPhotoForPost({
+      photos: input.photos,
+      assignedPhotoIds,
+      category: plannedPost.category,
+      businessCategory: input.businessCategory,
+      themes: input.editorialThemes,
+      preferredPhotoTags: draft?.preferredPhotoTags,
+    });
+    const text =
+      draft?.caption?.trim() ||
+      buildPlatformText({
+        platform: plannedPost.platform,
+        category: plannedPost.category,
         businessCategory: input.businessCategory,
         editorialSummary: input.editorialSummary,
         differentiator: input.differentiator,
         samplePost,
         hashtags,
-        index: slotIndex,
+        index,
       });
 
-      return {
-        platform,
-        textFacebook: platform === NETWORKS.FACEBOOK ? text : undefined,
-        textInstagram: platform === NETWORKS.INSTAGRAM ? text : undefined,
-        textLinkedin: platform === NETWORKS.LINKEDIN ? text : undefined,
-        hashtags,
-        imageUrl: canUseRealImage ? realImageUrl : undefined,
-        imageAiPrompt: canUseRealImage
-          ? undefined
-          : `Create a ${category.replace(/_/g, " ")} visual for ${input.businessCategory.toLowerCase()} in a style described as ${input.editorialSummary.toLowerCase()}.`,
-        imageSource: canUseRealImage ? IMAGE_SOURCES.REAL : IMAGE_SOURCES.AI,
-        category,
-        scheduledAt,
-        creditsConsumed: canUseRealImage ? 1 : 2,
-      } satisfies GeneratedPostDraft;
-    }),
-  );
+    return {
+      platform: plannedPost.platform,
+      textFacebook:
+        plannedPost.platform === NETWORKS.FACEBOOK ? text : undefined,
+      textInstagram:
+        plannedPost.platform === NETWORKS.INSTAGRAM ? text : undefined,
+      textLinkedin:
+        plannedPost.platform === NETWORKS.LINKEDIN ? text : undefined,
+      hashtags,
+      imageUrl: photo?.url,
+      imageAiPrompt: photo
+        ? undefined
+        : draft?.imagePrompt ||
+          `Create a ${plannedPost.category.replace(/_/g, " ")} visual for ${input.businessCategory.toLowerCase()} in a style described as ${input.editorialSummary.toLowerCase()}.`,
+      imageSource: photo ? IMAGE_SOURCES.REAL : IMAGE_SOURCES.AI,
+      category: plannedPost.category,
+      scheduledAt: plannedPost.scheduledAt,
+      creditsConsumed: photo ? 1 : 2,
+      assignedPhotoId: photo?._id,
+    } satisfies GeneratedPostDraft;
+  });
 }
 
 export const getCurrentCalendar = query({
@@ -390,6 +676,126 @@ export const getCurrentCalendarPosts = query({
   },
 });
 
+export const reschedulePost = mutation({
+  args: {
+    postId: v.id("posts"),
+    scheduledAt: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const userId = await auth.getUserId(ctx);
+    if (!userId) {
+      throw new Error("User not found");
+    }
+    const post = await ctx.db.get(args.postId);
+    if (!post) {
+      throw new Error("Post not found");
+    }
+    const calendar = await ctx.db.get(post.calendarId);
+    if (!calendar || calendar.userId !== userId) {
+      throw new Error("Unauthorized");
+    }
+    await ctx.db.patch(args.postId, {
+      scheduledAt: args.scheduledAt,
+      updatedAt: Date.now(),
+    });
+    return args.postId;
+  },
+});
+
+export const updatePostStatus = mutation({
+  args: {
+    postId: v.id("posts"),
+    status: v.union(
+      v.literal("draft"),
+      v.literal("approved"),
+      v.literal("scheduled"),
+      v.literal("published"),
+      v.literal("failed"),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const userId = await auth.getUserId(ctx);
+    if (!userId) {
+      throw new Error("User not found");
+    }
+    const post = await ctx.db.get(args.postId);
+    if (!post) {
+      throw new Error("Post not found");
+    }
+    const calendar = await ctx.db.get(post.calendarId);
+    if (!calendar || calendar.userId !== userId) {
+      throw new Error("Unauthorized");
+    }
+    await ctx.db.patch(args.postId, {
+      status: args.status,
+      publishedAt:
+        args.status === POST_STATUSES.PUBLISHED ? Date.now() : undefined,
+      updatedAt: Date.now(),
+    });
+    return args.postId;
+  },
+});
+
+export const createDraftPost = mutation({
+  args: {
+    scheduledAt: v.number(),
+    platform: v.optional(
+      v.union(
+        v.literal("facebook"),
+        v.literal("instagram"),
+        v.literal("linkedin"),
+      ),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const userId = await auth.getUserId(ctx);
+    if (!userId) {
+      throw new Error("User not found");
+    }
+    const calendar = await ctx.db
+      .query("editorial_calendars")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .order("desc")
+      .first();
+    if (!calendar) {
+      throw new Error("Calendar not found");
+    }
+    const platform =
+      args.platform && calendar.platforms.includes(args.platform)
+        ? args.platform
+        : ((calendar.platforms[0] as Network | undefined) ?? NETWORKS.FACEBOOK);
+    const postId = await ctx.db.insert("posts", {
+      channelId: calendar.channelId,
+      calendarId: calendar._id,
+      platform,
+      textFacebook:
+        platform === NETWORKS.FACEBOOK
+          ? "Nouveau post en preparation."
+          : undefined,
+      textInstagram:
+        platform === NETWORKS.INSTAGRAM
+          ? "Nouveau post en preparation."
+          : undefined,
+      textLinkedin:
+        platform === NETWORKS.LINKEDIN
+          ? "Nouveau post en preparation."
+          : undefined,
+      hashtags: [],
+      imageSource: IMAGE_SOURCES.PENDING,
+      category: POST_CATEGORIES.VALUE,
+      scheduledAt: args.scheduledAt,
+      status: POST_STATUSES.DRAFT,
+      creditsConsumed: 0,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+    await ctx.db.patch(calendar._id, {
+      totalPosts: calendar.totalPosts + 1,
+    });
+    return postId;
+  },
+});
+
 export const generateCalendarForCurrentUser = action({
   args: {},
   handler: async (
@@ -426,12 +832,20 @@ export const generateCalendarForCurrentUser = action({
       throw new Error("Editorial profile or cadence is incomplete");
     }
 
-    const realImageUrls = [selectedPage.picture, user.image].filter(
+    const channel = await ctx.runQuery(internal.calendar.getChannelByExternalId, {
+      platform: NETWORKS.FACEBOOK,
+      externalId: selectedPage.id,
+    });
+    const importedPhotos = channel
+      ? await ctx.runQuery(internal.calendar.getPhotosByChannel, {
+          channelId: channel._id,
+        })
+      : [];
+    const fallbackRealImageUrls = [selectedPage.picture, user.image].filter(
       (value): value is string => Boolean(value),
     );
-    const realImageBudget =
-      (user.uploadedPhotoCount ?? 0) + realImageUrls.length;
-    const generatedPosts = prepareGeneratedPosts({
+
+    const plan = prepareGeneratedPosts({
       cadence: user.selectedCadence,
       durationWeeks: user.selectedDurationWeeks,
       platforms: user.selectedPlatforms,
@@ -441,13 +855,46 @@ export const generateCalendarForCurrentUser = action({
       recommendedSchedule: user.recommendedSchedule ?? [],
       samplePosts: user.samplePosts ?? [],
       differentiator: user.differentiator,
-      realImageUrls,
-      realImageBudget,
+      photos: importedPhotos,
     });
+
+    const generatedDrafts = await generateClaudeDraftsWithRetry(
+      plan.claudePrompt,
+    );
+    const generatedPostsBase = finalizeGeneratedPosts({
+      plannedPosts: plan.plannedPosts,
+      generatedDrafts,
+      businessCategory: user.businessCategory,
+      editorialSummary: user.editorialSummary,
+      editorialThemes: user.editorialThemes ?? [],
+      samplePosts: user.samplePosts ?? [],
+      differentiator: user.differentiator,
+      photos: importedPhotos,
+    });
+
+    let fallbackIndex = 0;
+    const generatedPosts = generatedPostsBase.map((post) => {
+      if (post.imageSource === IMAGE_SOURCES.REAL || fallbackIndex >= fallbackRealImageUrls.length) {
+        return post;
+      }
+      const imageUrl = fallbackRealImageUrls[fallbackIndex];
+      fallbackIndex += 1;
+      return {
+        ...post,
+        imageUrl,
+        imageAiPrompt: undefined,
+        imageSource: IMAGE_SOURCES.REAL,
+        creditsConsumed: 1,
+      };
+    });
+
+    const realImageCount = generatedPosts.filter(
+      (post) => post.imageSource === IMAGE_SOURCES.REAL,
+    ).length;
 
     const totalCreditsEstimated = estimateCredits(
       generatedPosts.length,
-      realImageBudget,
+      realImageCount,
     );
 
     return await ctx.runMutation(internal.calendar.persistGeneratedCalendar, {
@@ -473,6 +920,73 @@ export const getCalendarUserState = internalQuery({
       throw new Error("User not found");
     }
     return user;
+  },
+});
+
+export const getChannelByExternalId = internalQuery({
+  args: {
+    platform: v.union(v.literal("facebook"), v.literal("instagram"), v.literal("linkedin")),
+    externalId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    return ctx.db
+      .query("channels")
+      .withIndex("by_platform_external", (q) =>
+        q.eq("platform", args.platform).eq("externalId", args.externalId),
+      )
+      .unique();
+  },
+});
+
+export const getPhotosByChannel = internalQuery({
+  args: {
+    channelId: v.id("channels"),
+  },
+  handler: async (ctx, args) => {
+    return ctx.db
+      .query("photos")
+      .withIndex("by_channel", (q) => q.eq("channelId", args.channelId))
+      .collect();
+  },
+});
+
+export const getGenerationAssetsSummary = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await auth.getUserId(ctx);
+    if (!userId) {
+      return null;
+    }
+    const user = await ctx.db.get(userId);
+    if (!user) {
+      return null;
+    }
+    const selectedPage = user.facebookPages?.find(
+      (page) => page.id === user.selectedFacebookPageId,
+    );
+    const channel = selectedPage
+      ? await ctx.db
+          .query("channels")
+          .withIndex("by_platform_external", (q) =>
+            q.eq("platform", NETWORKS.FACEBOOK).eq("externalId", selectedPage.id),
+          )
+          .unique()
+      : null;
+    const importedPhotos = channel
+      ? await ctx.db
+          .query("photos")
+          .withIndex("by_channel", (q) => q.eq("channelId", channel._id))
+          .collect()
+      : [];
+
+    return {
+      importedPhotosCount: importedPhotos.length,
+      availableRealImageCount:
+        importedPhotos.length +
+        (selectedPage?.picture ? 1 : 0) +
+        (user.image ? 1 : 0) +
+        (user.uploadedPhotoCount ?? 0),
+    };
   },
 });
 
@@ -509,6 +1023,7 @@ export const persistGeneratedCalendar = internalMutation({
         ),
         scheduledAt: v.number(),
         creditsConsumed: v.number(),
+        assignedPhotoId: v.optional(v.id("photos")),
       }),
     ),
   },
@@ -590,6 +1105,15 @@ export const persistGeneratedCalendar = internalMutation({
         createdAt: now,
         updatedAt: now,
       });
+      if (post.assignedPhotoId) {
+        const photo = await ctx.db.get(post.assignedPhotoId);
+        if (photo) {
+          await ctx.db.patch(post.assignedPhotoId, {
+            usedCount: photo.usedCount + 1,
+            lastUsedAt: now,
+          });
+        }
+      }
     }
 
     return {
