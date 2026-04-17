@@ -55,11 +55,11 @@ const data = {
       icon: Calendar,
       items: [
         {
-          title: "Vue semaine",
-          url: "/dashboard",
+          title: "Mes calendriers",
+          url: "/dashboard/calendars",
         },
         {
-          title: "Vue mois",
+          title: "Vue semaine",
           url: "/dashboard",
         },
         {

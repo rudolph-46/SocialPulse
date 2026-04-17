@@ -26,6 +26,7 @@ import { Route as AppAuthOnboardingLayoutUsernameImport } from './routes/_app/_a
 import { Route as AppAuthDashboardLayoutSettingsImport } from './routes/_app/_auth/dashboard/_layout.settings'
 import { Route as AppAuthDashboardLayoutCreditsImport } from './routes/_app/_auth/dashboard/_layout.credits'
 import { Route as AppAuthDashboardLayoutCheckoutImport } from './routes/_app/_auth/dashboard/_layout.checkout'
+import { Route as AppAuthDashboardLayoutCalendarsImport } from './routes/_app/_auth/dashboard/_layout.calendars'
 import { Route as AppAuthDashboardLayoutSettingsIndexImport } from './routes/_app/_auth/dashboard/_layout.settings.index'
 import { Route as AppAuthDashboardLayoutSettingsBillingImport } from './routes/_app/_auth/dashboard/_layout.settings.billing'
 
@@ -123,6 +124,12 @@ const AppAuthDashboardLayoutCheckoutRoute =
     getParentRoute: () => AppAuthDashboardLayoutRoute,
   } as any)
 
+const AppAuthDashboardLayoutCalendarsRoute =
+  AppAuthDashboardLayoutCalendarsImport.update({
+    path: '/calendars',
+    getParentRoute: () => AppAuthDashboardLayoutRoute,
+  } as any)
+
 const AppAuthDashboardLayoutSettingsIndexRoute =
   AppAuthDashboardLayoutSettingsIndexImport.update({
     path: '/',
@@ -209,6 +216,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppLoginLayoutIndexImport
       parentRoute: typeof AppLoginLayoutImport
     }
+    '/_app/_auth/dashboard/_layout/calendars': {
+      id: '/_app/_auth/dashboard/_layout/calendars'
+      path: '/calendars'
+      fullPath: '/dashboard/calendars'
+      preLoaderRoute: typeof AppAuthDashboardLayoutCalendarsImport
+      parentRoute: typeof AppAuthDashboardLayoutImport
+    }
     '/_app/_auth/dashboard/_layout/checkout': {
       id: '/_app/_auth/dashboard/_layout/checkout'
       path: '/checkout'
@@ -276,6 +290,7 @@ export const routeTree = rootRoute.addChildren({
     AppAuthRoute: AppAuthRoute.addChildren({
       AppAuthDashboardRoute: AppAuthDashboardRoute.addChildren({
         AppAuthDashboardLayoutRoute: AppAuthDashboardLayoutRoute.addChildren({
+          AppAuthDashboardLayoutCalendarsRoute,
           AppAuthDashboardLayoutCheckoutRoute,
           AppAuthDashboardLayoutCreditsRoute,
           AppAuthDashboardLayoutSettingsRoute:
@@ -356,6 +371,7 @@ export const routeTree = rootRoute.addChildren({
       "filePath": "_app/_auth/dashboard/_layout.tsx",
       "parent": "/_app/_auth/dashboard",
       "children": [
+        "/_app/_auth/dashboard/_layout/calendars",
         "/_app/_auth/dashboard/_layout/checkout",
         "/_app/_auth/dashboard/_layout/credits",
         "/_app/_auth/dashboard/_layout/settings",
@@ -380,6 +396,10 @@ export const routeTree = rootRoute.addChildren({
     "/_app/login/_layout/": {
       "filePath": "_app/login/_layout.index.tsx",
       "parent": "/_app/login/_layout"
+    },
+    "/_app/_auth/dashboard/_layout/calendars": {
+      "filePath": "_app/_auth/dashboard/_layout.calendars.tsx",
+      "parent": "/_app/_auth/dashboard/_layout"
     },
     "/_app/_auth/dashboard/_layout/checkout": {
       "filePath": "_app/_auth/dashboard/_layout.checkout.tsx",

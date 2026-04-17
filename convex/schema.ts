@@ -308,6 +308,7 @@ const schema = defineSchema({
     externalId: v.string(),
     imageUrl: v.optional(v.string()),
     status: channelStatusValidator,
+    autoApproveTimeout: v.optional(v.number()),
     connectedAt: v.number(),
     updatedAt: v.number(),
   })
@@ -326,6 +327,8 @@ const schema = defineSchema({
     totalPosts: v.number(),
     totalCreditsEstimated: v.number(),
     createdAt: v.number(),
+    activatedAt: v.optional(v.number()),
+    archivedAt: v.optional(v.number()),
   })
     .index("by_channel", ["channelId"])
     .index("by_user", ["userId"]),
