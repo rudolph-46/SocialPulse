@@ -18,6 +18,40 @@ import {
 } from "lucide-react";
 import siteConfig from "~/site.config";
 
+type CalendarItem = {
+  _id: string;
+  title: string;
+  status: "active" | "draft" | "archived";
+  cadence: number;
+  channelName: string;
+  startDate: number;
+  endDate: number;
+  postsPublished: number;
+  postsTotal: number;
+  totalPosts: number;
+};
+
+type CompareData = {
+  a: {
+    title: string;
+    totalPosts: number;
+    publishedPosts: number;
+    avgEngagement: number;
+    totalEngagement: number;
+    cadence: number;
+    categories: Record<string, number>;
+  } | null;
+  b: {
+    title: string;
+    totalPosts: number;
+    publishedPosts: number;
+    avgEngagement: number;
+    totalEngagement: number;
+    cadence: number;
+    categories: Record<string, number>;
+  } | null;
+};
+
 export const Route = createFileRoute(
   "/_app/_auth/dashboard/_layout/calendars",
 )({
@@ -57,9 +91,10 @@ const statusConfig = {
 } as const;
 
 function CalendarsPage() {
-  const { data: calendars = [] } = useQuery(
+  const { data: rawCalendars = [] } = useQuery(
     convexQuery(api.calendarManagement.listCalendars, {}),
   );
+  const calendars = rawCalendars as CalendarItem[];
 
   const activateFn = useConvexMutation(
     api.calendarManagement.activateCalendar,
@@ -362,12 +397,13 @@ function CompareView({
   calendarIdB: string;
   onClose: () => void;
 }) {
-  const { data } = useQuery(
+  const { data: rawData } = useQuery(
     convexQuery(api.calendarManagement.compareCalendars, {
       calendarIdA: calendarIdA as any,
       calendarIdB: calendarIdB as any,
     }),
   );
+  const data = rawData as CompareData | null | undefined;
 
   if (!data?.a || !data?.b) {
     return (

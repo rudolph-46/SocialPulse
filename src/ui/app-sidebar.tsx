@@ -6,150 +6,63 @@ import {
   CreditCard,
   ImageIcon,
   LayoutDashboard,
-  MessageSquare,
   Settings2,
   Share2,
-  BarChart3,
 } from "lucide-react";
 
-import { NavMain } from "@/ui/nav-main";
-import { NavProjects } from "@/ui/nav-projects";
 import { NavUser } from "@/ui/nav-user";
 import { TeamSwitcher } from "@/ui/team-switcher";
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
+  SidebarGroup,
+  SidebarGroupLabel,
   SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
   SidebarRail,
 } from "@/ui/sidebar";
 
-const data = {
-  teams: [
-    {
-      name: "SocialPulse",
-      logo: Share2,
-      plan: "Community Manager IA",
-    },
-  ],
-  navMain: [
-    {
-      title: "Dashboard",
-      url: "/dashboard",
-      icon: LayoutDashboard,
-      isActive: true,
-      items: [
-        {
-          title: "Overview",
-          url: "/dashboard",
-        },
-        {
-          title: "Analytics",
-          url: "/dashboard",
-        },
-      ],
-    },
-    {
-      title: "Calendrier",
-      url: "/dashboard",
-      icon: Calendar,
-      items: [
-        {
-          title: "Mes calendriers",
-          url: "/dashboard/calendars",
-        },
-        {
-          title: "Vue semaine",
-          url: "/dashboard",
-        },
-        {
-          title: "Historique",
-          url: "/dashboard",
-        },
-      ],
-    },
-    {
-      title: "Contenu",
-      url: "/dashboard",
-      icon: ImageIcon,
-      items: [
-        {
-          title: "Banque photos",
-          url: "/dashboard",
-        },
-        {
-          title: "Images IA",
-          url: "/dashboard",
-        },
-        {
-          title: "Hashtags",
-          url: "/dashboard",
-        },
-      ],
-    },
-    {
-      title: "Commentaires",
-      url: "/dashboard",
-      icon: MessageSquare,
-      items: [
-        {
-          title: "Inbox",
-          url: "/dashboard",
-        },
-        {
-          title: "Base de connaissance",
-          url: "/dashboard",
-        },
-      ],
-    },
-    {
-      title: "Paramètres",
-      url: "/dashboard/settings",
-      icon: Settings2,
-      items: [
-        {
-          title: "Général",
-          url: "/dashboard/settings",
-        },
-        {
-          title: "Facturation",
-          url: "/dashboard/settings/billing",
-        },
-        {
-          title: "Crédits",
-          url: "/dashboard/credits",
-        },
-      ],
-    },
-  ],
-  projects: [
-    {
-      name: "Canaux connectés",
-      url: "/dashboard",
-      icon: Share2,
-    },
-    {
-      name: "Crédits",
-      url: "/dashboard/credits",
-      icon: CreditCard,
-    },
-    {
-      name: "Performances",
-      url: "/dashboard",
-      icon: BarChart3,
-    },
-  ],
-};
+const navItems = [
+  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
+  { title: "Calendrier", url: "/dashboard/calendars", icon: Calendar },
+  { title: "Banque photos", url: "/dashboard/photos", icon: ImageIcon },
+  { title: "Crédits", url: "/dashboard/credits", icon: CreditCard },
+  { title: "Paramètres", url: "/dashboard/settings", icon: Settings2 },
+];
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
-        <TeamSwitcher teams={data.teams} />
+        <TeamSwitcher
+          teams={[
+            {
+              name: "SocialPulse",
+              logo: Share2,
+              plan: "Community Manager IA",
+            },
+          ]}
+        />
       </SidebarHeader>
       <SidebarContent>
-        <NavMain items={data.navMain} />
-        <NavProjects projects={data.projects} />
+        <SidebarGroup>
+          <SidebarGroupLabel>Navigation</SidebarGroupLabel>
+          <SidebarMenu>
+            {navItems.map((item) => (
+              <SidebarMenuItem key={item.title}>
+                <SidebarMenuButton asChild tooltip={item.title}>
+                  <a href={item.url}>
+                    <item.icon />
+                    <span>{item.title}</span>
+                  </a>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ))}
+          </SidebarMenu>
+        </SidebarGroup>
       </SidebarContent>
       <SidebarFooter>
         <NavUser />

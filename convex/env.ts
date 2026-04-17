@@ -6,3 +6,4 @@ export const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
 export const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
 export const UPLOAD_POST_API_KEY = process.env.UPLOAD_POST_API_KEY;
 export const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+export const WAVESPEED_API_KEY = process.env.WAVESPEED_API_KEY;
