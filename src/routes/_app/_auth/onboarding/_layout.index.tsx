@@ -1,5 +1,4 @@
 import { Button } from "@/ui/button";
-import { Input } from "@/ui/input";
 import {
   convexQuery,
   useConvexAction,
@@ -7,33 +6,37 @@ import {
 } from "@convex-dev/react-query";
 import { api } from "@cvx/_generated/api";
 import {
-  BRAND_TONES,
-  CONTENT_LANGUAGES,
   NETWORKS,
   ONBOARDING_STEPS,
-  TARGET_AUDIENCES,
-  type BrandTone,
-  type ContentLanguage,
   type Network,
-  type TargetAudience,
 } from "@cvx/schema";
 import { getLocaleCurrency } from "@/utils/misc";
 import { cn } from "@/utils/misc";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Loader2, Sparkles } from "lucide-react";
+import {
+  Loader2,
+  Sparkles,
+  Check,
+  Facebook,
+  Instagram,
+  Linkedin,
+  ImageIcon,
+  BarChart3,
+  Clock,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Route as DashboardRoute } from "@/routes/_app/_auth/dashboard/_layout.index";
 
 export const Route = createFileRoute("/_app/_auth/onboarding/_layout/")({
   component: OnboardingShell,
-  beforeLoad: () => ({
-    title: "Onboarding",
-  }),
+  beforeLoad: () => ({ title: "Onboarding" }),
 });
 
+type Step = "connect" | "analyzing" | "cadence" | "generating";
+
 const cadenceOptions = [
-  { value: 3, title: "3/semaine", subtitle: "Presence legere" },
+  { value: 3, title: "3/semaine", subtitle: "Présence légère" },
   { value: 5, title: "5/semaine", subtitle: "Le plus populaire" },
   { value: 7, title: "7/semaine", subtitle: "Tous les jours" },
   { value: 14, title: "14/semaine", subtitle: "Intensif" },
@@ -47,27 +50,6 @@ const networkLabels: Record<Network, string> = {
   [NETWORKS.LINKEDIN]: "LinkedIn",
 };
 
-const toneCopy: Record<BrandTone, string> = {
-  [BRAND_TONES.PROFESSIONAL]: "Professionnel",
-  [BRAND_TONES.WARM]: "Chaleureux",
-  [BRAND_TONES.FUN]: "Fun",
-  [BRAND_TONES.INSPIRING]: "Inspirant",
-};
-
-const audienceCopy: Record<TargetAudience, string> = {
-  [TARGET_AUDIENCES.B2C]: "Particuliers",
-  [TARGET_AUDIENCES.B2B]: "Entreprises",
-  [TARGET_AUDIENCES.BOTH]: "Les deux",
-};
-
-const languageCopy: Record<ContentLanguage, string> = {
-  [CONTENT_LANGUAGES.FR]: "Francais",
-  [CONTENT_LANGUAGES.EN]: "English",
-  [CONTENT_LANGUAGES.BOTH]: "Les deux",
-};
-
-type Step = "connect" | "business" | "cadence" | "generating";
-
 function OnboardingShell() {
   const { data: user } = useQuery(convexQuery(api.app.getCurrentUser, {}));
   const saveProgress = useConvexMutation(api.app.saveOnboardingProgress);
@@ -80,38 +62,58 @@ function OnboardingShell() {
   );
   const syncFacebookPages = useConvexAction(api.app.syncFacebookPages);
   const selectFacebookPage = useConvexMutation(api.app.selectFacebookPage);
+  const analyzeChannel = useConvexAction(api.analyze.analyzeChannel);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
   const [step, setStep] = useState<Step>("connect");
-  const [businessCategory, setBusinessCategory] = useState("");
-  const [targetAudience, setTargetAudience] = useState<TargetAudience | "">("");
-  const [brandTone, setBrandTone] = useState<BrandTone | "">("");
-  const [contentLanguage, setContentLanguage] = useState<ContentLanguage | "">("");
   const [selectedPlatforms, setSelectedPlatforms] = useState<Network[]>([
     NETWORKS.FACEBOOK,
   ]);
   const [selectedCadence, setSelectedCadence] = useState(5);
   const [selectedDuration, setSelectedDuration] = useState(4);
-  const [facebookConnectionError, setFacebookConnectionError] = useState<string | null>(null);
-  const [isSyncingAfterCallback, setIsSyncingAfterCallback] = useState(false);
+  const [facebookError, setFacebookError] = useState<string | null>(null);
+  const [isSyncingCallback, setIsSyncingCallback] = useState(false);
+
+  // Analysis state
+  const [analysisStatus, setAnalysisStatus] = useState<
+    "idle" | "fetching" | "analyzing" | "importing" | "done" | "error"
+  >("idle");
+  const [analysisResult, setAnalysisResult] = useState<{
+    sector: string;
+    tone: string;
+    themes: string[];
+    bestHours: string[];
+    bestDays: string[];
+    recommendations: string;
+    photosImported: number;
+    postsAnalyzed: number;
+  } | null>(null);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+
+  // Generation state
   const [generationProgress, setGenerationProgress] = useState(8);
   const [generationError, setGenerationError] = useState<string | null>(null);
   const generationStartedRef = useRef(false);
 
-  const { mutateAsync: saveOnboardingProgress, isPending: isSaving } =
-    useMutation({ mutationFn: saveProgress });
+  const { mutateAsync: saveOnboardingProgress } = useMutation({
+    mutationFn: saveProgress,
+  });
   const { mutateAsync: finishOnboardingFlow } = useMutation({
     mutationFn: finishOnboarding,
   });
-  const { mutateAsync: runCalendarGeneration, isPending: isGeneratingCalendar } =
-    useMutation({ mutationFn: generateCalendar });
-  const { mutateAsync: startFacebookConnection, isPending: isConnectingFacebook } =
+  const { mutateAsync: runCalendarGeneration } = useMutation({
+    mutationFn: generateCalendar,
+  });
+  const { mutateAsync: startFacebookConnection, isPending: isConnecting } =
     useMutation({ mutationFn: createFacebookConnection });
-  const { mutateAsync: refreshFacebookPages, isPending: isRefreshingFacebook } =
+  const { mutateAsync: refreshFacebookPages, isPending: isRefreshing } =
     useMutation({ mutationFn: syncFacebookPages });
   const { mutateAsync: chooseFacebookPage } = useMutation({
     mutationFn: selectFacebookPage,
+  });
+  const { mutateAsync: runAnalysis } = useMutation({
+    mutationFn: analyzeChannel,
   });
 
   // Restore state from user
@@ -121,10 +123,6 @@ function OnboardingShell() {
       navigate({ to: DashboardRoute.fullPath });
       return;
     }
-    setBusinessCategory(user.businessCategory ?? "");
-    setTargetAudience(user.targetAudience ?? "");
-    setBrandTone(user.brandTone ?? "");
-    setContentLanguage(user.contentLanguage ?? "");
     setSelectedCadence(user.selectedCadence ?? 5);
     setSelectedPlatforms(user.selectedPlatforms ?? [NETWORKS.FACEBOOK]);
     setSelectedDuration(user.selectedDurationWeeks ?? 4);
@@ -138,48 +136,42 @@ function OnboardingShell() {
       setStep("generating");
     } else if (user.onboardingStep === ONBOARDING_STEPS.CADENCE) {
       setStep("cadence");
-    } else if (
-      user.onboardingStep === ONBOARDING_STEPS.BUSINESS_INFO ||
-      user.onboardingStep === ONBOARDING_STEPS.EDITORIAL_PROFILE
-    ) {
-      setStep("business");
-    } else if (hasConnected && user.businessCategory) {
+    } else if (hasConnected && user.editorialSummary) {
       setStep("cadence");
     } else if (hasConnected) {
-      setStep("business");
+      setStep("analyzing");
     } else {
       setStep("connect");
     }
   }, [navigate, user]);
 
-  // Facebook callback
+  // Facebook OAuth callback
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     if (params.get("uploadPost") !== "facebook_connected") return;
-
     params.delete("uploadPost");
-    const next = `${window.location.pathname}${
-      params.toString() ? `?${params.toString()}` : ""
-    }`;
-    window.history.replaceState({}, "", next);
-
-    setIsSyncingAfterCallback(true);
+    window.history.replaceState(
+      {},
+      "",
+      `${window.location.pathname}${params.toString() ? `?${params}` : ""}`,
+    );
+    setIsSyncingCallback(true);
     refreshFacebookPages({})
-      .then(() => {
+      .then(() =>
         queryClient.invalidateQueries({
           queryKey: convexQuery(api.app.getCurrentUser, {}).queryKey,
-        });
-      })
-      .catch(() => {
-        setFacebookConnectionError(
-          "Impossible de recuperer vos pages. Reessayez.",
-        );
-      })
-      .finally(() => {
-        setIsSyncingAfterCallback(false);
-      });
+        }),
+      )
+      .catch(() => setFacebookError("Impossible de récupérer vos pages."))
+      .finally(() => setIsSyncingCallback(false));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-trigger analysis when entering analysis step
+  useEffect(() => {
+    if (step !== "analyzing" || analysisStatus !== "idle") return;
+    launchAnalysis();
+  }, [step, analysisStatus]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Generation step
   useEffect(() => {
@@ -207,18 +199,7 @@ function OnboardingShell() {
         window.clearInterval(interval);
         setGenerationProgress(100);
         await finishOnboardingFlow({ currency: getLocaleCurrency() });
-        await Promise.all([
-          queryClient.invalidateQueries({
-            queryKey: convexQuery(api.app.getCurrentUser, {}).queryKey,
-          }),
-          queryClient.invalidateQueries({
-            queryKey: convexQuery(api.calendar.getCurrentCalendar, {}).queryKey,
-          }),
-          queryClient.invalidateQueries({
-            queryKey: convexQuery(api.calendar.getCurrentCalendarPosts, {})
-              .queryKey,
-          }),
-        ]);
+        await queryClient.invalidateQueries();
         navigate({ to: DashboardRoute.fullPath });
       })
       .catch((error) => {
@@ -226,22 +207,11 @@ function OnboardingShell() {
         generationStartedRef.current = false;
         setGenerationProgress(8);
         setGenerationError(
-          error instanceof Error
-            ? error.message
-            : "La generation du calendrier a echoue.",
+          error instanceof Error ? error.message : "Génération échouée.",
         );
       });
-
-    return () => {
-      window.clearInterval(interval);
-    };
-  }, [
-    step,
-    finishOnboardingFlow,
-    navigate,
-    queryClient,
-    runCalendarGeneration,
-  ]);
+    return () => window.clearInterval(interval);
+  }, [step, finishOnboardingFlow, navigate, queryClient, runCalendarGeneration]);
 
   if (!user) return null;
 
@@ -252,43 +222,84 @@ function OnboardingShell() {
   const totalPosts =
     selectedCadence * selectedPlatforms.length * selectedDuration;
 
+  // Handlers
   const handleFacebookConnect = async () => {
-    setFacebookConnectionError(null);
+    setFacebookError(null);
     try {
       const result = await startFacebookConnection({});
       if (result?.accessUrl) window.location.href = result.accessUrl;
     } catch (error) {
-      const msg =
-        error instanceof Error ? error.message : "Connexion impossible.";
-      setFacebookConnectionError(msg);
+      setFacebookError(
+        error instanceof Error ? error.message : "Connexion impossible.",
+      );
     }
   };
 
-  const goToBusiness = () => setStep("business");
+  const goToAnalysis = async () => {
+    setAnalysisStatus("idle");
+    setAnalysisResult(null);
+    setStep("analyzing");
+  };
 
-  const saveBusiness = async () => {
+  const launchAnalysis = async () => {
+    setAnalysisStatus("fetching");
+    setAnalysisError(null);
+
+    const statusSteps: Array<typeof analysisStatus> = [
+      "fetching",
+      "analyzing",
+      "importing",
+    ];
+    let statusIndex = 0;
+    const statusInterval = setInterval(() => {
+      statusIndex = Math.min(statusIndex + 1, statusSteps.length - 1);
+      setAnalysisStatus(statusSteps[statusIndex]);
+    }, 3000);
+
+    try {
+      const result = await runAnalysis({});
+      clearInterval(statusInterval);
+      setAnalysisResult({
+        sector: result.profile.sector,
+        tone: result.profile.tone,
+        themes: result.profile.themes,
+        bestHours: result.profile.bestHours,
+        bestDays: result.profile.bestDays,
+        recommendations: result.profile.recommendations,
+        photosImported: result.photosImported,
+        postsAnalyzed: result.postsAnalyzed,
+      });
+      setAnalysisStatus("done");
+      await queryClient.invalidateQueries({
+        queryKey: convexQuery(api.app.getCurrentUser, {}).queryKey,
+      });
+    } catch (error) {
+      clearInterval(statusInterval);
+      setAnalysisError(
+        error instanceof Error ? error.message : "Analyse échouée.",
+      );
+      setAnalysisStatus("error");
+    }
+  };
+
+  const goToCadence = async () => {
     await saveOnboardingProgress({
       step: ONBOARDING_STEPS.CADENCE,
-      businessCategory: businessCategory.trim(),
-      targetAudience: targetAudience || undefined,
-      brandTone: brandTone || undefined,
-      contentLanguage: contentLanguage || undefined,
     });
     setStep("cadence");
   };
 
   const launchGeneration = async () => {
-    const summary = `${toneCopy[brandTone as BrandTone] ?? "Chaleureux"} pour ${businessCategory.toLowerCase() || "activite locale"}`;
-    const themes = [businessCategory, audienceCopy[targetAudience as TargetAudience] ?? ""].filter(Boolean);
-    const schedule =
-      contentLanguage === CONTENT_LANGUAGES.EN
-        ? ["Tuesday 10:00", "Thursday 10:00", "Saturday 11:00"]
-        : ["Mardi 10h", "Jeudi 10h", "Samedi 11h"];
-    const samplePosts = [
-      `Decouvrez notre approche unique en ${businessCategory.toLowerCase() || "local"}.`,
-      `3 raisons de nous faire confiance.`,
-      `En coulisses : notre methode au quotidien.`,
-    ];
+    const summary =
+      analysisResult?.tone ??
+      user.editorialSummary ??
+      "Chaleureux et accessible";
+    const themes = analysisResult?.themes ?? user.editorialThemes ?? [];
+    const schedule = (analysisResult?.bestDays ?? []).map(
+      (day, i) =>
+        `${day} ${(analysisResult?.bestHours ?? ["10:00"])[i % (analysisResult?.bestHours?.length ?? 1)]}`,
+    );
+
     await saveOnboardingProgress({
       step: ONBOARDING_STEPS.GENERATING,
       selectedCadence,
@@ -296,34 +307,38 @@ function OnboardingShell() {
       selectedDurationWeeks: selectedDuration,
       editorialSummary: summary,
       editorialThemes: themes,
-      recommendedSchedule: schedule,
-      samplePosts,
+      recommendedSchedule:
+        schedule.length > 0
+          ? schedule
+          : ["Mardi 10h", "Jeudi 10h", "Samedi 11h"],
+      samplePosts: [],
     });
     setStep("generating");
   };
 
-  const stepIndex = step === "connect" ? 0 : step === "business" ? 1 : step === "cadence" ? 2 : 3;
-  const progressPct = step === "generating" ? generationProgress : [15, 40, 70, 90][stepIndex];
+  const stepIndex =
+    step === "connect" ? 0 : step === "analyzing" ? 1 : step === "cadence" ? 2 : 3;
+  const progressPct =
+    step === "generating"
+      ? generationProgress
+      : [12, 38, 68, 90][stepIndex];
 
   return (
     <div className="mx-auto flex h-full w-full max-w-3xl flex-col justify-center gap-6 px-6 py-16">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm font-medium uppercase tracking-[0.2em] text-primary/50">
-            SocialPulse
-          </p>
-          <h1 className="mt-2 text-3xl font-semibold text-primary">
-            {step === "connect" && "Connecte ton reseau"}
-            {step === "business" && "Ton activite"}
-            {step === "cadence" && "Ta cadence de publication"}
-            {step === "generating" && "Generation du calendrier"}
-          </h1>
-        </div>
-        {(isSaving || isSyncingAfterCallback) && (
-          <Loader2 className="h-5 w-5 animate-spin text-primary/60" />
-        )}
+      {/* Header */}
+      <div>
+        <p className="text-sm font-medium uppercase tracking-[0.2em] text-primary/50">
+          SocialPulse
+        </p>
+        <h1 className="mt-2 text-3xl font-semibold text-primary">
+          {step === "connect" && "Connecte ton réseau"}
+          {step === "analyzing" && "Analyse de ta page"}
+          {step === "cadence" && "Ta cadence de publication"}
+          {step === "generating" && "Génération du calendrier"}
+        </h1>
       </div>
 
+      {/* Progress bar */}
       <div className="h-2 overflow-hidden rounded-full bg-primary/10">
         <div
           className="h-full rounded-full bg-primary transition-all"
@@ -331,7 +346,7 @@ function OnboardingShell() {
         />
       </div>
 
-      {/* STEP 1: Connect network */}
+      {/* ============ STEP 1: Connect ============ */}
       {step === "connect" && (
         <section className="space-y-6">
           <div className="grid gap-4 md:grid-cols-3">
@@ -345,42 +360,58 @@ function OnboardingShell() {
                   : "border-border bg-card",
               )}
             >
-              <p className="text-xl font-semibold text-primary">Facebook</p>
-              {(isConnectingFacebook || isRefreshingFacebook || isSyncingAfterCallback) && (
+              <div className="flex items-center gap-3">
+                <Facebook className="h-6 w-6 text-blue-600" />
+                <p className="text-xl font-semibold text-primary">Facebook</p>
+              </div>
+              {(isConnecting || isRefreshing || isSyncingCallback) && (
                 <Loader2 className="mt-3 h-4 w-4 animate-spin text-primary/60" />
               )}
-              <p className="mt-2 text-sm text-primary/60">
-                Connecter ta page Facebook
-              </p>
+              {hasConnectedFacebook && (
+                <div className="mt-3 flex items-center gap-2 text-sm text-green-600">
+                  <Check className="h-4 w-4" /> Connecté
+                </div>
+              )}
+              {!hasConnectedFacebook && (
+                <p className="mt-2 text-sm text-primary/60">
+                  Connecter ta page Facebook
+                </p>
+              )}
             </button>
             <button
               type="button"
               disabled
               className="cursor-not-allowed rounded-3xl border border-border bg-card p-6 text-left opacity-50"
             >
-              <p className="text-xl font-semibold text-primary">Instagram</p>
-              <p className="mt-2 text-sm text-primary/60">Bientot</p>
+              <div className="flex items-center gap-3">
+                <Instagram className="h-6 w-6" />
+                <p className="text-xl font-semibold text-primary">Instagram</p>
+              </div>
+              <p className="mt-2 text-sm text-primary/60">Bientôt</p>
             </button>
             <button
               type="button"
               disabled
               className="cursor-not-allowed rounded-3xl border border-border bg-card p-6 text-left opacity-50"
             >
-              <p className="text-xl font-semibold text-primary">LinkedIn</p>
-              <p className="mt-2 text-sm text-primary/60">Bientot</p>
+              <div className="flex items-center gap-3">
+                <Linkedin className="h-6 w-6" />
+                <p className="text-xl font-semibold text-primary">LinkedIn</p>
+              </div>
+              <p className="mt-2 text-sm text-primary/60">Bientôt</p>
             </button>
           </div>
 
-          {facebookConnectionError && (
+          {facebookError && (
             <div className="rounded-2xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
-              {facebookConnectionError}
+              {facebookError}
             </div>
           )}
 
           {(user.facebookPages?.length ?? 0) > 0 && (
             <div className="rounded-3xl border border-border bg-card p-6 shadow-sm">
               <p className="text-lg font-semibold text-primary">
-                Pages detectees
+                Pages détectées
               </p>
               <div className="mt-4 grid gap-3 md:grid-cols-2">
                 {user.facebookPages?.map((page) => (
@@ -388,7 +419,7 @@ function OnboardingShell() {
                     key={page.id}
                     type="button"
                     className={cn(
-                      "rounded-2xl border p-5 text-left transition",
+                      "flex items-center gap-3 rounded-2xl border p-4 text-left transition",
                       user.selectedFacebookPageId === page.id
                         ? "border-primary bg-primary/5"
                         : "border-border hover:border-primary/40",
@@ -397,15 +428,30 @@ function OnboardingShell() {
                       chooseFacebookPage({ facebookPageId: page.id })
                     }
                   >
-                    <p className="font-semibold text-primary">{page.name}</p>
-                    <p className="mt-1 text-xs text-primary/60">{page.id}</p>
+                    {page.picture ? (
+                      <img
+                        src={page.picture}
+                        alt={page.name}
+                        className="h-10 w-10 rounded-full object-cover"
+                      />
+                    ) : (
+                      <div className="h-10 w-10 rounded-full bg-gradient-to-br from-blue-400 to-blue-600" />
+                    )}
+                    <div>
+                      <p className="font-semibold text-primary">{page.name}</p>
+                      {user.selectedFacebookPageId === page.id && (
+                        <span className="text-xs text-green-600">
+                          Sélectionnée
+                        </span>
+                      )}
+                    </div>
                   </button>
                 ))}
               </div>
             </div>
           )}
 
-          {(user.facebookPages?.length ?? 0) === 0 && !facebookConnectionError && (
+          {(user.facebookPages?.length ?? 0) === 0 && !facebookError && (
             <p className="rounded-2xl bg-secondary/60 p-4 text-sm text-primary/70">
               Connecte ta page Facebook pour commencer.
             </p>
@@ -413,132 +459,167 @@ function OnboardingShell() {
 
           <div className="flex justify-end">
             <Button
-              onClick={goToBusiness}
+              onClick={goToAnalysis}
               disabled={!user.selectedFacebookPageId}
             >
-              Continuer
+              Analyser ma page
             </Button>
           </div>
         </section>
       )}
 
-      {/* STEP 2: Secteur d'activite */}
-      {step === "business" && (
-        <section className="space-y-6 rounded-3xl border border-border bg-card p-8 shadow-sm">
-          <div>
-            <p className="text-sm text-primary/60">
-              Dis-nous en plus sur ton activite pour personnaliser ton contenu.
-            </p>
-          </div>
+      {/* ============ STEP 2: Analysis ============ */}
+      {step === "analyzing" && (
+        <section className="space-y-6">
+          {analysisStatus !== "done" && analysisStatus !== "error" && (
+            <div className="rounded-3xl border border-border bg-card p-8 shadow-sm">
+              <div className="mx-auto max-w-md text-center">
+                <Sparkles className="mx-auto h-10 w-10 animate-pulse text-primary" />
+                <h2 className="mt-4 text-xl font-semibold text-primary">
+                  SocialPulse analyse ta page
+                </h2>
+                <p className="mt-2 text-sm text-primary/60">
+                  Récupération de tes publications, analyse du contenu et import
+                  de tes photos.
+                </p>
+              </div>
+              <div className="mt-8 grid gap-3 md:grid-cols-3">
+                <AnalysisStep
+                  label="Récupération des posts"
+                  done={
+                    analysisStatus === "analyzing" ||
+                    analysisStatus === "importing"
+                  }
+                  active={analysisStatus === "fetching"}
+                />
+                <AnalysisStep
+                  label="Analyse IA du contenu"
+                  done={analysisStatus === "importing"}
+                  active={analysisStatus === "analyzing"}
+                />
+                <AnalysisStep
+                  label="Import des photos"
+                  done={false}
+                  active={analysisStatus === "importing"}
+                />
+              </div>
+            </div>
+          )}
 
-          <div className="space-y-4">
-            <div>
-              <label className="text-sm font-medium text-primary">
-                Secteur d'activite
-              </label>
-              <Input
-                className="mt-2"
-                value={businessCategory}
-                onChange={(e) => setBusinessCategory(e.target.value)}
-                placeholder="Ex: coiffure, restaurant, coaching, boutique"
-              />
-              <div className="mt-2 flex flex-wrap gap-2">
-                {["Coiffure", "Restaurant", "Hotel", "Coaching", "Boutique"].map(
-                  (s) => (
-                    <button
-                      key={s}
-                      type="button"
-                      className="rounded-full border border-border px-3 py-1 text-sm text-primary/70 hover:border-primary hover:text-primary"
-                      onClick={() => setBusinessCategory(s)}
+          {analysisStatus === "done" && analysisResult && (
+            <div className="space-y-4">
+              <div className="rounded-3xl border border-primary/20 bg-card p-8 shadow-sm">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <div className="inline-flex items-center gap-2 rounded-full bg-green-500/10 px-3 py-1 text-sm text-green-600">
+                      <Check className="h-4 w-4" />
+                      Analyse terminée
+                    </div>
+                    <h2 className="mt-3 text-2xl font-semibold text-primary">
+                      {analysisResult.sector}
+                    </h2>
+                    <p className="mt-1 text-sm text-primary/60">
+                      Ton : {analysisResult.tone}
+                    </p>
+                  </div>
+                  <div className="text-right text-sm text-primary/60">
+                    <p>{analysisResult.postsAnalyzed} posts analysés</p>
+                    <p>{analysisResult.photosImported} photos importées</p>
+                  </div>
+                </div>
+
+                <div className="mt-6 flex flex-wrap gap-2">
+                  {analysisResult.themes.map((theme) => (
+                    <span
+                      key={theme}
+                      className="rounded-full bg-secondary px-3 py-1 text-sm text-primary/70"
                     >
-                      {s}
-                    </button>
-                  ),
+                      {theme}
+                    </span>
+                  ))}
+                </div>
+
+                <div className="mt-6 grid gap-4 md:grid-cols-2">
+                  <div className="rounded-2xl bg-secondary/60 p-4">
+                    <div className="flex items-center gap-2 text-sm font-medium text-primary">
+                      <Clock className="h-4 w-4" />
+                      Meilleurs créneaux
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {analysisResult.bestDays.map((day, i) => (
+                        <span
+                          key={day}
+                          className="rounded-full bg-card px-3 py-1 text-sm text-primary/70"
+                        >
+                          {day}{" "}
+                          {analysisResult.bestHours[
+                            i % analysisResult.bestHours.length
+                          ] ?? ""}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="rounded-2xl bg-secondary/60 p-4">
+                    <div className="flex items-center gap-2 text-sm font-medium text-primary">
+                      <ImageIcon className="h-4 w-4" />
+                      Banque photos
+                    </div>
+                    <p className="mt-2 text-2xl font-bold text-primary">
+                      {analysisResult.photosImported}
+                    </p>
+                    <p className="text-xs text-primary/60">
+                      photos récupérées depuis Facebook
+                    </p>
+                  </div>
+                </div>
+
+                {analysisResult.recommendations && (
+                  <div className="mt-6 rounded-2xl bg-primary/5 p-4">
+                    <div className="flex items-center gap-2 text-sm font-medium text-primary">
+                      <BarChart3 className="h-4 w-4" />
+                      Recommandations
+                    </div>
+                    <p className="mt-2 text-sm text-primary/70">
+                      {analysisResult.recommendations}
+                    </p>
+                  </div>
                 )}
               </div>
-            </div>
 
-            <div>
-              <label className="text-sm font-medium text-primary">
-                Tes clients
-              </label>
-              <div className="mt-2 flex gap-3">
-                {(Object.keys(audienceCopy) as TargetAudience[]).map((a) => (
-                  <button
-                    key={a}
-                    type="button"
-                    className={cn(
-                      "rounded-full border px-4 py-2 text-sm",
-                      targetAudience === a
-                        ? "border-primary bg-primary/5 text-primary"
-                        : "border-border text-primary/60",
-                    )}
-                    onClick={() => setTargetAudience(a)}
-                  >
-                    {audienceCopy[a]}
-                  </button>
-                ))}
+              <div className="flex justify-end">
+                <Button onClick={goToCadence} className="gap-2">
+                  C'est bien moi — continuer
+                </Button>
               </div>
             </div>
+          )}
 
-            <div>
-              <label className="text-sm font-medium text-primary">Ton</label>
-              <div className="mt-2 flex flex-wrap gap-3">
-                {(Object.keys(toneCopy) as BrandTone[]).map((t) => (
-                  <button
-                    key={t}
-                    type="button"
-                    className={cn(
-                      "rounded-full border px-4 py-2 text-sm",
-                      brandTone === t
-                        ? "border-primary bg-primary/5 text-primary"
-                        : "border-border text-primary/60",
-                    )}
-                    onClick={() => setBrandTone(t)}
-                  >
-                    {toneCopy[t]}
-                  </button>
-                ))}
+          {analysisStatus === "error" && (
+            <div className="rounded-3xl border border-destructive/30 bg-destructive/10 p-8 text-center">
+              <p className="font-medium text-destructive">Analyse échouée</p>
+              <p className="mt-2 text-sm text-destructive/80">
+                {analysisError}
+              </p>
+              <div className="mt-4 flex justify-center gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setAnalysisStatus("idle");
+                    setAnalysisError(null);
+                  }}
+                >
+                  Réessayer
+                </Button>
+                <Button onClick={goToCadence}>
+                  Passer et continuer
+                </Button>
               </div>
             </div>
-
-            <div>
-              <label className="text-sm font-medium text-primary">Langue</label>
-              <div className="mt-2 flex gap-3">
-                {(Object.keys(languageCopy) as ContentLanguage[]).map((l) => (
-                  <button
-                    key={l}
-                    type="button"
-                    className={cn(
-                      "rounded-full border px-4 py-2 text-sm",
-                      contentLanguage === l
-                        ? "border-primary bg-primary/5 text-primary"
-                        : "border-border text-primary/60",
-                    )}
-                    onClick={() => setContentLanguage(l)}
-                  >
-                    {languageCopy[l]}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <div className="flex justify-between">
-            <Button variant="ghost" onClick={() => setStep("connect")}>
-              Retour
-            </Button>
-            <Button
-              onClick={saveBusiness}
-              disabled={!businessCategory.trim()}
-            >
-              Continuer
-            </Button>
-          </div>
+          )}
         </section>
       )}
 
-      {/* STEP 3: Cadence + CTA Generer */}
+      {/* ============ STEP 3: Cadence + CTA ============ */}
       {step === "cadence" && (
         <section className="space-y-6 rounded-3xl border border-border bg-card p-8 shadow-sm">
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -556,7 +637,7 @@ function OnboardingShell() {
               >
                 {opt.value === 5 && (
                   <span className="mb-3 inline-flex rounded-full bg-primary px-2 py-1 text-xs font-medium text-primary-foreground">
-                    Recommande
+                    Recommandé
                   </span>
                 )}
                 <p className="text-xl font-semibold text-primary">
@@ -569,7 +650,7 @@ function OnboardingShell() {
 
           <div className="grid gap-6 md:grid-cols-2">
             <div>
-              <p className="text-sm font-medium text-primary">Reseaux</p>
+              <p className="text-sm font-medium text-primary">Réseaux</p>
               <div className="mt-3 flex flex-wrap gap-3">
                 {(Object.keys(networkLabels) as Network[]).map((p) => (
                   <button
@@ -593,13 +674,13 @@ function OnboardingShell() {
                     }
                   >
                     {networkLabels[p]}
-                    {p !== NETWORKS.FACEBOOK && " (bientot)"}
+                    {p !== NETWORKS.FACEBOOK && " (bientôt)"}
                   </button>
                 ))}
               </div>
             </div>
             <div>
-              <p className="text-sm font-medium text-primary">Duree</p>
+              <p className="text-sm font-medium text-primary">Durée</p>
               <div className="mt-3 flex gap-3">
                 {durationOptions.map((d) => (
                   <button
@@ -621,26 +702,29 @@ function OnboardingShell() {
           </div>
 
           <div className="rounded-2xl bg-secondary/60 p-5">
-            <p className="text-sm text-primary/60">Recapitulatif</p>
+            <p className="text-sm text-primary/60">Récapitulatif</p>
             <p className="mt-2 text-lg font-semibold text-primary">
-              {selectedCadence} posts/sem × {selectedPlatforms.length} reseau ×{" "}
+              {selectedCadence} posts/sem × {selectedPlatforms.length} réseau ×{" "}
               {selectedDuration} semaines = {totalPosts} posts
             </p>
           </div>
 
           <div className="flex justify-between">
-            <Button variant="ghost" onClick={() => setStep("business")}>
+            <Button
+              variant="ghost"
+              onClick={() => setStep("analyzing")}
+            >
               Retour
             </Button>
             <Button onClick={launchGeneration} className="gap-2">
               <Sparkles className="h-4 w-4" />
-              Generer mon calendrier
+              Générer mon calendrier
             </Button>
           </div>
         </section>
       )}
 
-      {/* STEP 4: Generating */}
+      {/* ============ STEP 4: Generating ============ */}
       {step === "generating" && (
         <section className="space-y-6 rounded-3xl border border-border bg-card p-8 text-center shadow-sm">
           <div className="mx-auto max-w-xl">
@@ -648,7 +732,7 @@ function OnboardingShell() {
               Ton calendrier prend forme
             </h2>
             <p className="mt-3 text-sm text-primary/60">
-              Redaction des posts, creation des visuels et optimisation des
+              Rédaction des posts, création des visuels et optimisation des
               horaires.
             </p>
           </div>
@@ -662,7 +746,7 @@ function OnboardingShell() {
             {[
               "Analyse de votre page...",
               "Identification de votre audience...",
-              "Redaction de vos posts...",
+              "Rédaction de vos posts...",
               "Optimisation des horaires...",
             ].map((label, index) => (
               <div
@@ -680,12 +764,11 @@ function OnboardingShell() {
           </div>
           {generationError && (
             <div className="mx-auto max-w-2xl rounded-2xl border border-destructive/30 bg-destructive/10 p-4 text-left text-sm text-destructive">
-              <p className="font-medium">Generation interrompue</p>
+              <p className="font-medium">Génération interrompue</p>
               <p className="mt-1">{generationError}</p>
               <div className="mt-4">
                 <Button
                   variant="outline"
-                  disabled={isGeneratingCalendar}
                   onClick={() => {
                     generationStartedRef.current = false;
                     setGenerationError(null);
@@ -693,13 +776,42 @@ function OnboardingShell() {
                     setStep("generating");
                   }}
                 >
-                  Relancer la generation
+                  Relancer la génération
                 </Button>
               </div>
             </div>
           )}
         </section>
       )}
+    </div>
+  );
+}
+
+function AnalysisStep({
+  label,
+  done,
+  active,
+}: {
+  label: string;
+  done: boolean;
+  active: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        "rounded-2xl border p-4 text-center text-sm transition-all",
+        done
+          ? "border-green-500/30 bg-green-500/5 text-green-700"
+          : active
+            ? "border-primary bg-primary/5 text-primary"
+            : "border-border text-primary/40",
+      )}
+    >
+      {done && <Check className="mx-auto mb-2 h-5 w-5 text-green-600" />}
+      {active && (
+        <Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin text-primary" />
+      )}
+      {label}
     </div>
   );
 }

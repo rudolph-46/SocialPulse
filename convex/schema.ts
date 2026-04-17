@@ -353,6 +353,27 @@ const schema = defineSchema({
     .index("by_calendar", ["calendarId"])
     .index("by_status", ["status"])
     .index("by_scheduled", ["scheduledAt"]),
+  photos: defineTable({
+    channelId: v.id("channels"),
+    userId: v.id("users"),
+    storageId: v.id("_storage"),
+    url: v.string(),
+    filename: v.string(),
+    fileSizeBytes: v.number(),
+    tags: v.array(v.string()),
+    tagsSource: v.union(
+      v.literal("auto"),
+      v.literal("manual"),
+      v.literal("mixed"),
+    ),
+    usedCount: v.number(),
+    lastUsedAt: v.optional(v.number()),
+    sourcePostId: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_channel", ["channelId"])
+    .index("by_user", ["userId"])
+    .index("by_used", ["channelId", "usedCount"]),
   credit_transactions: defineTable({
     userId: v.id("users"),
     type: creditTransactionTypeValidator,
